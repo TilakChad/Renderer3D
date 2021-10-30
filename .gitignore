@@ -3,3 +3,8 @@
 ################################################################################
 
 /.vs/Renderer
+/Debug
+/Renderer.vcxproj.filters
+/Renderer.vcxproj
+/Renderer.vcxproj.user
+/x64/Debug
