@@ -1,0 +1,2 @@
+# Renderer
+Renderer -> Rasteriser + RayTracer
