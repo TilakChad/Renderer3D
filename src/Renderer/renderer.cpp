@@ -36,6 +36,7 @@ void FastClearColor(uint8_t r, uint8_t g, uint8_t b)
     uint32_t filled = 1;
     uint32_t stride = platform.colorBuffer.width * platform.colorBuffer.noChannels;
 
+    // __debugbreak();
     while (filled < platform.colorBuffer.height)
     {
         uint32_t remaining = platform.colorBuffer.height - filled;
