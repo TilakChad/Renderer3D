@@ -1,28 +1,30 @@
 #pragma once
 #include <cstdint>
+#include <cassert>
 
-using float32 = float; 
-using float64 = double; 
+using float32 = float;
+using float64 = double;
 
 struct Platform;
-typedef void (*SwapBufferFn)(Platform *);
+typedef void (*SwapBufferFn)(void);
 
 struct Platform
 {
-	// What should a platform have?
-	int32_t height; 
-	int32_t width; 
-	float32 deltaTime;
+    // What should a platform have?
+    uint32_t height;
+    uint32_t width;
+    float32  deltaTime;
 
-	struct
+    struct
     {
-		uint8_t *buffer; 
-		int32_t  width; 
-		int32_t  height; 
-		int8_t   noChannels;
+        uint8_t *buffer;
+        uint32_t width;
+        uint32_t height;
+        uint8_t  noChannels;
     } colorBuffer;
 
-	SwapBufferFn SwapBuffer;
+    SwapBufferFn SwapBuffer;
 };
 
 void RendererMainLoop(Platform *platform);
+Platform GetCurrentPlatform(void);
