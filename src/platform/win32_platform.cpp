@@ -78,6 +78,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR CmdLine
 
 #if _DEBUG
     AllocConsole();
+    FILE *fp;
+    freopen_s(&fp,"CONIN$", "r", stdin);
+    freopen_s(&fp,"CONOUT$", "w", stdout);
 #endif
     // We ain't handling anything input related for now
 
