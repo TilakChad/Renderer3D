@@ -11,6 +11,12 @@ void RendererMainLoop(Platform *platform)
     // ScreenSpace(-1.0f, -0.5f, 0.5f, 0.5f, 1.0f, 0.0f);
     // ScreenSpace(0.5f, 0.5f, -1.0f, -0.5f, 1.0f, 0.0f);
     // ClipSpace(Vec2(-0.5f, -0.5f), Vec2(-0.5f, 0.5f), (0.5f, 0.5f));
-    ClipSpace(Vec2(- 7.0f, -0.5f),Vec2(0.5f, 0.5f), Vec2(1.0f, 0.0f));
+    // ClipSpace(Vec2(- 7.0f, -0.5f),Vec2(0.5f, 0.5f), Vec2(1.0f, 0.0f));
+    VertexAttrib2D v0 = {Vec2f(-0.75f, -0.75f), Vec2f(0, 0), Vec3u8(0xFF, 0x00, 0x00)};
+    VertexAttrib2D v1 = {Vec2f(-0.75f, 0.75f), Vec2f(0, 0), Vec3u8(0x00, 0xFF, 0x00)};
+    VertexAttrib2D v2 = {Vec2f( 0.5f,  0.75f), Vec2f(0, 0), Vec3u8(0x00, 0x00, 0xFF)};
+   //  ClipSpace(Vec2(-0.75f, -0.75f), Vec2(-0.75f, 0.75f), Vec2(0.5f, 0.75f));
+   
+    ClipSpace(v1, v0, v2);
     platform->SwapBuffer();
 }
