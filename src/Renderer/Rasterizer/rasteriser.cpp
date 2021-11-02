@@ -38,7 +38,7 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec3<uint8_t> at
 
     // potential for paralellization
 
-    auto          area = Vec2<int>::Determinant(v1, v0);
+    int32_t       area = Vec2<int>::Determinant(v1, v0);
 
     float         l1 = 0, l2 = 0, l3 = 0; // Barycentric coordinates
 
@@ -58,18 +58,28 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec3<uint8_t> at
             auto a2    = Vec2<int>::Determinant(point - vec2, v1);
             auto a3    = Vec2<int>::Determinant(point - vec3, v2);
 
-            if ((a1 >= 0 && a2 >= 0 && a3 >= 0)) // || (a1 < 0 && a2 < 0 && a3 < 0)) --> Turns on rasterization of anti clockwise triangles
+            if ((a1 >= 0 && a2 >= 0 &&
+                 a3 >= 0)) //  || (a1 < 0 && a2 < 0 && a3 < 0)) // --> Turns on rasterization of anti clockwise triangles
             {
-                // Calculate the barycentric coordinates
-                l3          = static_cast<float>(a1) / area;
-                l1          = static_cast<float>(a2) / area;
-                l2          = static_cast<float>(a3) / area;
-                auto color  = l1 * attribA + l2 * attribB + l3 * attribC;
-                resultColor = Vec3<uint8_t>(color.x, color.y, color.z);
-                mem[0]      = resultColor.z;
-                mem[1]      = resultColor.y;
-                mem[2]      = resultColor.x;
-                mem[3]      = 0x00;
+                //// Calculate the barycentric coordinates
+                // l3          = static_cast<float>(a1) / area;
+                // l1          = static_cast<float>(a2) / area;
+                // l2          = static_cast<float>(a3) / area;
+
+                // auto color  = l1 * attribA + l2 * attribB + l3 * attribC;
+                ////resultColor = Vec3<uint8_t>(color.x, color.y, color.z);
+                // mem[0]      = resultColor.z;
+                // mem[1]      = resultColor.y;
+                // mem[2]      = resultColor.x;
+                // mem[3]      = 0x00;
+
+                auto r = (attribA.x * a2 + attribB.x * a3 + attribC.x * a1) / area;
+                auto g = (attribA.y * a2 + attribB.y * a3 + attribC.y * a1) / area;
+                auto b = (attribA.z * a2 + attribB.z * a3 + attribC.z * a1) / area;
+                mem[0] = b;
+                mem[1] = g;
+                mem[2] = r;
+                mem[3] = 0x00;
             }
             mem = mem + 4;
         }
@@ -239,8 +249,9 @@ void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
                 inter.TexCoord = Vec2f(0.0f, 0.0f); // Nothing done here .. Might revisit during texture mapping phase
 
                 // TODO -> Handle cases
-                auto floatColor = Vec3f(v0.Color.x,v0.Color.y,v0.Color.z) + (inter.Position.x - v0.Position.x) / (v1.Position.x - v0.Position.x) *
-                                             (v1.Color - v0.Color);
+                auto floatColor = Vec3f(v0.Color.x, v0.Color.y, v0.Color.z) + (inter.Position.x - v0.Position.x) /
+                                                                                  (v1.Position.x - v0.Position.x) *
+                                                                                  (v1.Color - v0.Color);
                 inter.Color = Vec3u8(floatColor.x, floatColor.y, floatColor.z);
 
                 outVertices.push_back(inter); // Pushes the intersection point
@@ -253,10 +264,10 @@ void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
 
     assert(outVertices.size() > 2);
     auto i = 0;
-    // for (int i = 0; i < outVertices.size(); i += 2)
-    //{
-    ScreenSpace(outVertices.at(i).Position, outVertices.at(i + 1).Position,
-                outVertices.at((i + 2) % outVertices.size()).Position, outVertices.at(i).Color,
-                outVertices.at(i + 1).Color, outVertices.at(i + 2).Color);
-    //}
+    for (int i = 0; i < outVertices.size()-1; i+=2)
+    {
+        ScreenSpace(outVertices.at(i).Position, outVertices.at(i + 1).Position,
+                    outVertices.at((i + 2) % outVertices.size()).Position, outVertices.at(i).Color,
+                    outVertices.at(i + 1).Color, outVertices.at((i + 2)%outVertices.size()).Color);
+    }
 }

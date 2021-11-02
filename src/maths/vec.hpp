@@ -77,7 +77,7 @@ template <cNumeric T> struct Vec3
 
     T x, y, z;
     Vec3() = default;
-    Vec3(T a) : x{a}, y{a}, z{a}
+    explicit Vec3(T a) : x{a}, y{a}, z{a}
     {
     }
     Vec3(T x, T y, T z) : x{x}, y{y}, z{z}
@@ -100,21 +100,29 @@ template <cNumeric T> struct Vec3
         return Vec3(x * vec.x, y * vec.y, z * vec.z);
     }
 
-    template <cNumeric U> constexpr Vec3<U> operator*(U scalar)
+    template <cNumeric U> 
+    constexpr auto operator*(U scalar) const -> Vec3<decltype(scalar*x)>
     {
-        return Vec3<U>(x * scalar, y * scalar, z * scalar);
+        return Vec3<decltype(scalar*x)>(x * scalar, y * scalar, z * scalar);
+    }
+
+    constexpr Vec3 operator/(T scalar)
+    {
+        return Vec3(x / scalar, y / scalar, z / scalar);
     }
 };
 
 using Vec3f  = Vec3<float32>;
 using Vec3u8 = Vec3<uint8_t>;
 
-template <cNumeric T, cNumeric U> inline constexpr Vec3<U> operator*(U scalar, const Vec3<T> &vec)
+template <cNumeric T, cNumeric U> 
+inline constexpr auto operator*(U scalar, const Vec3<T> &vec)
 {
-    return Vec3<U>(scalar * vec.x, scalar * vec.y, scalar * vec.z);
+    return vec.operator*(scalar);
 }
 
-template <cNumeric T> inline constexpr Vec3<T> Vec2<T>::Cross(const Vec2<T> &vec1, const Vec2<T> &vec2)
+template <cNumeric T> 
+inline constexpr Vec3<T> Vec2<T>::Cross(const Vec2<T> &vec1, const Vec2<T> &vec2)
 {
     return Vec3(T{}, T{}, vec1.x * vec2.y - vec2.x * vec1.y);
 }
