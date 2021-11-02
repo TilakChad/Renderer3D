@@ -5,8 +5,7 @@
 
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-
-static Platform         win32Platform; // --> Exposed to other translation units 
+static Platform         win32Platform; // --> Exposed to other translation units
 static Win32Window      win32;         // --> Used internally for win32 application only
 
 void                    SwapBuffers(void)
@@ -50,7 +49,7 @@ void ResizeWritableBitmap(uint32_t width, uint32_t height)
     win32.renderBuffer.colorBuffer =
         (uint8_t *)VirtualAlloc(nullptr, width * height * bytesPerPixel, MEM_COMMIT, PAGE_READWRITE);
 
-    // platform specific 
+    // platform specific
     win32Platform.width                  = width;
     win32Platform.height                 = height;
     win32Platform.colorBuffer.noChannels = win32.renderBuffer.bmpInfo.bmiHeader.biBitCount / 8;
@@ -64,8 +63,7 @@ void ResizeWritableBitmap(uint32_t width, uint32_t height)
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR CmdLine, int nCmdShow)
 {
 
-    //SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-
+    // SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     WNDCLASSEX wc{};
     wc.cbSize        = sizeof(wc);
     wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
@@ -79,8 +77,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR CmdLine
 #if _DEBUG
     AllocConsole();
     FILE *fp;
-    freopen_s(&fp,"CONIN$", "r", stdin);
-    freopen_s(&fp,"CONOUT$", "w", stdout);
+    freopen_s(&fp, "CONIN$", "r", stdin);
+    freopen_s(&fp, "CONOUT$", "w", stderr);
+    freopen_s(&fp, "CONOUT$", "w", stdout);
 #endif
     // We ain't handling anything input related for now
 
