@@ -1,8 +1,9 @@
 #pragma once
+#include <cassert>
+#include <cmath>
 #include <compare>
 #include <concepts>
 #include <cstdint>
-#include <cassert>
 #include <type_traits>
 
 #include <iostream>
@@ -100,10 +101,18 @@ template <cNumeric T> struct Vec3
         return Vec3(x * vec.x, y * vec.y, z * vec.z);
     }
 
-    template <cNumeric U> 
-    constexpr auto operator*(U scalar) const -> Vec3<decltype(scalar*x)>
+    constexpr T norm() const
     {
-        return Vec3<decltype(scalar*x)>(x * scalar, y * scalar, z * scalar);
+        return std::sqrt(x * x + y * y + z * z);
+    }
+    constexpr T normSquare() const
+    {
+        return x * x + y * y + z * z;
+    }
+
+    template <cNumeric U> constexpr auto operator*(U scalar) const -> Vec3<decltype(scalar * x)>
+    {
+        return Vec3<decltype(scalar * x)>(x * scalar, y * scalar, z * scalar);
     }
 
     constexpr Vec3 operator/(T scalar)
@@ -115,14 +124,12 @@ template <cNumeric T> struct Vec3
 using Vec3f  = Vec3<float32>;
 using Vec3u8 = Vec3<uint8_t>;
 
-template <cNumeric T, cNumeric U> 
-inline constexpr auto operator*(U scalar, const Vec3<T> &vec)
+template <cNumeric T, cNumeric U> inline constexpr auto operator*(U scalar, const Vec3<T> &vec)
 {
     return vec.operator*(scalar);
 }
 
-template <cNumeric T> 
-inline constexpr Vec3<T> Vec2<T>::Cross(const Vec2<T> &vec1, const Vec2<T> &vec2)
+template <cNumeric T> inline constexpr Vec3<T> Vec2<T>::Cross(const Vec2<T> &vec1, const Vec2<T> &vec2)
 {
     return Vec3(T{}, T{}, vec1.x * vec2.y - vec2.x * vec1.y);
 }

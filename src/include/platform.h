@@ -24,6 +24,12 @@ struct Platform
     } colorBuffer;
 
     SwapBufferFn SwapBuffer;
+    bool         bFirst = true;
+    struct 
+    {
+        bool bMouseScrolled = false; 
+        int32_t value          = 0;
+    } Mouse;
 };
 
 void RendererMainLoop(Platform *platform);

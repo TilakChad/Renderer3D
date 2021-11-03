@@ -1,4 +1,5 @@
 #include "../../include/rasteriser.h"
+#include "../../image/PNGLoader.h"
 #include "../../maths/vec.hpp"
 
 #include <algorithm>
@@ -59,7 +60,8 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec3<uint8_t> at
             auto a3    = Vec2<int>::Determinant(point - vec3, v2);
 
             if ((a1 >= 0 && a2 >= 0 &&
-                 a3 >= 0)) //  || (a1 < 0 && a2 < 0 && a3 < 0)) // --> Turns on rasterization of anti clockwise triangles
+                 a3 >=
+                     0)) //  || (a1 < 0 && a2 < 0 && a3 < 0)) // --> Turns on rasterization of anti clockwise triangles
             {
                 //// Calculate the barycentric coordinates
                 // l3          = static_cast<float>(a1) / area;
@@ -264,10 +266,70 @@ void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
 
     assert(outVertices.size() > 2);
     auto i = 0;
-    for (int i = 0; i < outVertices.size()-1; i+=2)
+    for (int i = 0; i < outVertices.size() - 1; i += 2)
     {
         ScreenSpace(outVertices.at(i).Position, outVertices.at(i + 1).Position,
                     outVertices.at((i + 2) % outVertices.size()).Position, outVertices.at(i).Color,
-                    outVertices.at(i + 1).Color, outVertices.at((i + 2)%outVertices.size()).Color);
+                    outVertices.at(i + 1).Color, outVertices.at((i + 2) % outVertices.size()).Color);
+    }
+}
+
+void SampleTexture(uint8_t *img_buffer, uint8_t *buffer, uint32_t image_width, uint32_t image_height,
+                   uint32_t image_channels, uint32_t buffer_width, uint32_t buffer_height, uint32_t buffer_channels,
+                   uint32_t target_width, uint32_t target_height)
+{
+    uint32_t xoff = 0, yoff = 0;
+    uint32_t xfill = 0, yfill = 0;
+    uint32_t ximg = 0, yimg = 0;
+
+    // defaults
+
+    xfill = target_width;
+    yfill = target_height;
+    xoff  = (buffer_width - target_width) / 2;
+    yoff  = (buffer_height - target_height) / 2;
+    ximg  = 0;
+    yimg  = 0;
+
+    if (target_width > buffer_width || target_height > buffer_height) // --> This case not handled for now
+    {
+        // Calculate the portion of the image that is visible in the current screen
+        //   return;
+        if (target_width > buffer_width)
+        {
+            xoff  = 0;
+            ximg  = (target_width - buffer_width) / 2;
+            xfill = buffer_width - 1;
+        }
+        if (target_height > buffer_height)
+        {
+            yoff  = 0;
+            yimg  = (target_height - buffer_height) / 2;
+            yfill = buffer_height - 1;
+        }
+    }
+
+    uint8_t *img = img_buffer;
+    // For each pixel, do inverse transformation from image space to object space
+    auto mapToImg = [=](uint32_t x, uint32_t y) {
+        auto h = target_height, w = target_width;
+        auto H = image_height, W = image_width;
+        return Vec2<uint32_t>(x * H / h, y * W / w);
+    };
+
+    int stride = buffer_width * buffer_channels;
+
+    for (int h = yoff; h < yfill + yoff; ++h)
+    {
+        img = buffer + h * stride + xoff * buffer_channels;
+        for (int w = xoff; w < xfill + xoff; ++w)
+        {
+            auto pos   = mapToImg(yimg + h - yoff, ximg + w - xoff); // -> Retrieve image at position h row w column
+            auto pixel = img_buffer + (pos.x * image_width + pos.y) * image_channels;
+            *img++     = pixel[2];
+            *img++     = pixel[1];
+            *img++     = pixel[0];
+            img++;
+        }
     }
 }

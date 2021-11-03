@@ -165,6 +165,7 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_SIZE:
     {
         // TODO : Handle when (width | height -> 0) or (Minimized event is sent)
+        win32Platform.bFirst = true;
         RECT rect;
         GetClientRect(hwnd, &rect);
         win32Platform.width  = rect.right - rect.left;
@@ -175,6 +176,13 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     case WM_MOUSEMOVE:
     {
+        break;
+    }
+    case WM_MOUSEWHEEL:
+    {
+        win32Platform.Mouse.bMouseScrolled = true; 
+        win32Platform.bFirst               = true; 
+        win32Platform.Mouse.value          = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
         break;
     }
     default:
