@@ -400,24 +400,30 @@ void DrawImage(const char* img,uint8_t* target_buffer,uint32_t target_width, uin
 {
     uint32_t width, height, channels, bit_depth; 
     uint8_t *mem = LoadPNGFromFile(img, &width, &height, &channels, &bit_depth);
-
+    uint8_t *to_free = mem;
     if (target_width < width || target_height < height) 
         return ; 
     // Else copy the content of image into the buffer 
     // From top left corner 
     int stride = target_width * target_channels;
+    uint32_t xoff = 0, yoff = 0;
+    xoff            = (target_width - width) / 2; 
+    yoff            = (target_height - height) / 2;
+
     uint8_t *imgloc = target_buffer;
 
-    for (int h = 0; h < height; ++h)
+    for (int h = yoff; h < height + yoff; ++h)
     {
-        imgloc = target_buffer + h * stride;    
-        for (int w = 0; w < width; ++w)
+        imgloc = target_buffer + h * stride + xoff * target_channels;    
+        for (int w = xoff; w < width + xoff; ++w)
         {
             *imgloc++ = mem[2];
             *imgloc++ = mem[1]; 
             *imgloc++ = mem[0];
             imgloc++;
-            mem += 3; 
+            mem += channels; 
         }
     }
+    free(to_free);
 }
+

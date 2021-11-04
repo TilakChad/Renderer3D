@@ -7,8 +7,78 @@
 #include <iostream>
 #include <vector>
 
+// void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec3<uint8_t> attribA, Vec3<uint8_t> attribB,
+//                Vec3<uint8_t> attribC)
+//{
+//    // Its the triangle rasteriser
+//    // It rasterizes only counter clockwise triangles
+//    //
+//    // To make it work for almost every triangle,
+//    //
+//    // First comes the clipping phase.. anything outside |1| are clipped against the rectangle
+//    // Clipping will be done in previous phase
+//
+//    Platform platform = GetCurrentPlatform();
+//
+//    int      minX     = std::min({x1, x2, x3});
+//    int      maxX     = std::max({x1, x2, x3});
+//
+//    int      minY     = std::min({y1, y2, y3});
+//    int      maxY     = std::max({y1, y2, y3});
+//
+//    // Assume vectors are in clockwise ordering
+//    Vec2     v0   = Vec2(x2, y2) - Vec2(x1, y1);
+//    Vec2     v1   = Vec2(x3, y3) - Vec2(x2, y2);
+//    Vec2     v2   = Vec2(x1, y1) - Vec2(x3, y3);
+//
+//    Vec2     vec1 = Vec2(x1, y1);
+//    Vec2     vec2 = Vec2(x2, y2);
+//    Vec2     vec3 = Vec2(x3, y3);
+//
+//    uint8_t *mem;
+//
+//    // potential for paralellization
+//
+//    int32_t       area = Vec2<int>::Determinant(v1, v0);
+//
+//    float         l1 = 0, l2 = 0, l3 = 0; // Barycentric coordinates
+//
+//    Vec3<uint8_t> resultColor;
+//    for (int h = minY; h <= maxY; ++h)
+//    {
+//        int32_t offset =
+//            (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
+//        mem = platform.colorBuffer.buffer + offset;
+//        mem = mem + minX * platform.colorBuffer.noChannels;
+//
+//        // This is a very tight loop and need to be optimized heavily even for a suitable framerate
+//        for (int w = minX; w <= maxX; ++w)
+//        {
+//            Vec2 point = Vec2(w, h);
+//            auto a1    = Vec2<int>::Determinant(point - vec1, v0);
+//            auto a2    = Vec2<int>::Determinant(point - vec2, v1);
+//            auto a3    = Vec2<int>::Determinant(point - vec3, v2);
+//
+//            if ((a1 >= 0 && a2 >= 0 &&
+//                 a3 >=
+//                     0)) //  || (a1 < 0 && a2 < 0 && a3 < 0)) // --> Turns on rasterization of anti clockwise
+//                     triangles
+//            {
+//                auto r = (attribA.x * a2 + attribB.x * a3 + attribC.x * a1) / area;
+//                auto g = (attribA.y * a2 + attribB.y * a3 + attribC.y * a1) / area;
+//                auto b = (attribA.z * a2 + attribB.z * a3 + attribC.z * a1) / area;
+//                mem[0] = b;
+//                mem[1] = g;
+//                mem[2] = r;
+//                mem[3] = 0x00;
+//            }
+//            mem = mem + 4;
+//        }
+//    }
+//}
+
 void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec3<uint8_t> attribA, Vec3<uint8_t> attribB,
-                Vec3<uint8_t> attribC)
+                Vec3<uint8_t> attribC, Vec2f texA, Vec2f texB, Vec2f texC)
 {
     // Its the triangle rasteriser
     // It rasterizes only counter clockwise triangles
@@ -39,11 +109,12 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec3<uint8_t> at
 
     // potential for paralellization
 
-    int32_t       area = Vec2<int>::Determinant(v1, v0);
+    int32_t area = Vec2<int>::Determinant(v1, v0);
 
-    float         l1 = 0, l2 = 0, l3 = 0; // Barycentric coordinates
+    float   l1 = 0, l2 = 0, l3 = 0; // Barycentric coordinates
 
-    Vec3<uint8_t> resultColor;
+    auto    texture = GetActiveTexture();
+
     for (int h = minY; h <= maxY; ++h)
     {
         int32_t offset =
@@ -63,83 +134,43 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec3<uint8_t> at
                  a3 >=
                      0)) //  || (a1 < 0 && a2 < 0 && a3 < 0)) // --> Turns on rasterization of anti clockwise triangles
             {
-                //// Calculate the barycentric coordinates
-                // l3          = static_cast<float>(a1) / area;
-                // l1          = static_cast<float>(a2) / area;
-                // l2          = static_cast<float>(a3) / area;
+                // auto r = (attribA.x * a2 + attribB.x * a3 + attribC.x * a1) / area;
+                // auto g = (attribA.y * a2 + attribB.y * a3 + attribC.y * a1) / area;
+                // auto b = (attribA.z * a2 + attribB.z * a3 + attribC.z * a1) / area;
+                // mem[0] = b;
+                // mem[1] = g;
+                // mem[2] = r;
+                // mem[3] = 0x00;
+                auto r   = (texA.x * a2 + texB.x * a3 + texC.x * a1) / area;
+                auto g   = (texA.y * a2 + texB.y * a3 + texC.y * a1) / area;
 
-                // auto color  = l1 * attribA + l2 * attribB + l3 * attribC;
-                ////resultColor = Vec3<uint8_t>(color.x, color.y, color.z);
-                // mem[0]      = resultColor.z;
-                // mem[1]      = resultColor.y;
-                // mem[2]      = resultColor.x;
-                // mem[3]      = 0x00;
-
-                auto r = (attribA.x * a2 + attribB.x * a3 + attribC.x * a1) / area;
-                auto g = (attribA.y * a2 + attribB.y * a3 + attribC.y * a1) / area;
-                auto b = (attribA.z * a2 + attribB.z * a3 + attribC.z * a1) / area;
-                mem[0] = b;
-                mem[1] = g;
-                mem[2] = r;
-                mem[3] = 0x00;
+                auto rgb = texture.Sample(Vec2(r, g),Texture::Interpolation::LINEAR);
+                mem[0]   = rgb.z;
+                mem[1]   = rgb.y;
+                mem[2]   = rgb.x;
+                mem[3]   = 0x00;
             }
             mem = mem + 4;
         }
     }
-
-    // Naive direct parallelizatio using libstdc++
-
-    // auto task1 = [=](int minY, int maxY) mutable {
-    //    for (int h = minY; h <= maxY; ++h)
-    //    {
-    //        int32_t offset =
-    //            (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
-    //        mem = platform.colorBuffer.buffer + offset;
-    //        mem = mem + minX * platform.colorBuffer.noChannels;
-
-    //        // This is a very tight loop and need to be optimized heavily even for a suitable framerate
-    //        for (int w = minX; w <= maxX; ++w)
-    //        {
-    //            Vec2 point = Vec2(w, h);
-    //            auto a     = Vec2<int>::Determinant(point - vec1, v0) >= 0;
-    //            auto b     = Vec2<int>::Determinant(point - vec2, v1) >= 0;
-    //            auto c     = Vec2<int>::Determinant(point - vec3, v2) >= 0;
-
-    //            /*if (Vec2<int>::Determinant(point - vec1, v0) >= 0 && Vec2<int>::Determinant(point - vec2, v1) >= 0
-    //            &&
-    //                Vec2<int>::Determinant(point - vec3, v2) >= 0)*/
-    //            if ((a && b && c) || (!a && !b && !c))
-    //            {
-    //                mem[0] = color.z;
-    //                mem[1] = color.y;
-    //                mem[2] = color.x;
-    //                mem[3] = 0x00;
-    //            }
-    //            mem = mem + 4;
-    //        }
-    //    }
-    //};
-    // auto run = std::async(std::launch::async,task1,minY,maxY/3);
-    // auto ano = std::async(std::launch::async, task1, maxY / 3 + 1, 2*maxY/3);
-    // task1(2 * maxY / 3 + 1, maxY);
-    // run.wait();
-    // ano.wait();
 }
 
-void ScreenSpace(Vec2f v0, Vec2f v1, Vec2f v2, Vec3<uint8_t> attribA, Vec3<uint8_t> attribB, Vec3<uint8_t> attribC)
+void ScreenSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
 {
     // ClipSpace({x1, y1}, {x2, y2}, {x3, y3});
     Platform platform = GetCurrentPlatform();
-    int      scrX0    = static_cast<int>((platform.width - 1) / 2 * (v0.x + 1));
-    int      scrY0    = static_cast<int>((platform.height - 1) / 2 * (1 + v0.y));
+    int      scrX0    = static_cast<int>((platform.width - 1) / 2 * (v0.Position.x + 1));
+    int      scrY0    = static_cast<int>((platform.height - 1) / 2 * (1 + v0.Position.y));
 
-    int      scrX1    = static_cast<int>((platform.width - 1) / 2 * (v1.x + 1));
-    int      scrY1    = static_cast<int>((platform.height - 1) / 2 * (1 + v1.y));
+    int      scrX1    = static_cast<int>((platform.width - 1) / 2 * (v1.Position.x + 1));
+    int      scrY1    = static_cast<int>((platform.height - 1) / 2 * (1 + v1.Position.y));
 
-    int      scrX2    = static_cast<int>((platform.width - 1) / 2 * (v2.x + 1));
-    int      scrY2    = static_cast<int>((platform.height - 1) / 2 * (1 + v2.y));
+    int      scrX2    = static_cast<int>((platform.width - 1) / 2 * (v2.Position.x + 1));
+    int      scrY2    = static_cast<int>((platform.height - 1) / 2 * (1 + v2.Position.y));
 
-    Rasteriser(scrX0, scrY0, scrX1, scrY1, scrX2, scrY2, attribA, attribB, attribC);
+    // Rasteriser(scrX0, scrY0, scrX1, scrY1, scrX2, scrY2, v0.Color, v1.Color, v2.Color);
+    Rasteriser(scrX0, scrY0, scrX1, scrY1, scrX2, scrY2, v0.Color, v1.Color, v2.Color, v0.TexCoord, v1.TexCoord,
+               v2.TexCoord);
 }
 
 // Polygon Clipping using Sutherland-Hodgeman algorithm in NDC space before screen space mapping
@@ -229,8 +260,8 @@ void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
         {
             auto v0 = inVertices.at(i), v1 = inVertices.at((i + 1) % inVertices.size());
 
-            auto head = Vec2<float>::Determinant(clipPoly[vert] + line, v1.Position - clipPoly[vert]) >= 0;
-            auto tail = Vec2<float>::Determinant(clipPoly[vert] + line, v0.Position - clipPoly[vert]) >= 0;
+            auto head = Vec2<float>::Determinant(line, v1.Position - clipPoly[vert]) >= 0;
+            auto tail = Vec2<float>::Determinant(line, v0.Position - clipPoly[vert]) >= 0;
 
             if (head && tail)
                 outVertices.push_back(v1);
@@ -248,7 +279,20 @@ void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
                 // those two vertices
                 VertexAttrib2D inter;
                 inter.Position = point1;
-                inter.TexCoord = Vec2f(0.0f, 0.0f); // Nothing done here .. Might revisit during texture mapping phase
+
+                if (fabs(v1.Position.x - v0.Position.x) > fabs(v1.Position.y - v0.Position.y))
+                {
+                    inter.TexCoord = Vec2f(v0.TexCoord.x, v0.TexCoord.y) + (inter.Position.x - v0.Position.x) /
+                                                                               (v1.Position.x - v0.Position.x) *
+                                                                               (v1.TexCoord - v0.TexCoord);
+                }
+                else
+                {
+                    inter.TexCoord = Vec2f(v0.TexCoord.x, v0.TexCoord.y) + (inter.Position.y - v0.Position.y) /
+                                                                               (v1.Position.y - v0.Position.y) *
+                                                                               (v1.TexCoord - v0.TexCoord);
+                }
+                // Nothing done here .. Might revisit during texture mapping phase
 
                 // TODO -> Handle cases
                 auto floatColor = Vec3f(v0.Color.x, v0.Color.y, v0.Color.z) + (inter.Position.x - v0.Position.x) /
@@ -268,68 +312,7 @@ void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
     auto i = 0;
     for (int i = 0; i < outVertices.size() - 1; i += 2)
     {
-        ScreenSpace(outVertices.at(i).Position, outVertices.at(i + 1).Position,
-                    outVertices.at((i + 2) % outVertices.size()).Position, outVertices.at(i).Color,
-                    outVertices.at(i + 1).Color, outVertices.at((i + 2) % outVertices.size()).Color);
+        ScreenSpace(outVertices.at(i), outVertices.at(i + 1), outVertices.at((i + 2) % outVertices.size()));
     }
 }
 
-void SampleTexture(uint8_t *img_buffer, uint8_t *buffer, uint32_t image_width, uint32_t image_height,
-                   uint32_t image_channels, uint32_t buffer_width, uint32_t buffer_height, uint32_t buffer_channels,
-                   uint32_t target_width, uint32_t target_height)
-{
-    uint32_t xoff = 0, yoff = 0;
-    uint32_t xfill = 0, yfill = 0;
-    uint32_t ximg = 0, yimg = 0;
-
-    // defaults
-
-    xfill = target_width;
-    yfill = target_height;
-    xoff  = (buffer_width - target_width) / 2;
-    yoff  = (buffer_height - target_height) / 2;
-    ximg  = 0;
-    yimg  = 0;
-
-    if (target_width > buffer_width || target_height > buffer_height) // --> This case not handled for now
-    {
-        // Calculate the portion of the image that is visible in the current screen
-        //   return;
-        if (target_width > buffer_width)
-        {
-            xoff  = 0;
-            ximg  = (target_width - buffer_width) / 2;
-            xfill = buffer_width - 1;
-        }
-        if (target_height > buffer_height)
-        {
-            yoff  = 0;
-            yimg  = (target_height - buffer_height) / 2;
-            yfill = buffer_height - 1;
-        }
-    }
-
-    uint8_t *img = img_buffer;
-    // For each pixel, do inverse transformation from image space to object space
-    auto mapToImg = [=](uint32_t x, uint32_t y) {
-        auto h = target_height, w = target_width;
-        auto H = image_height, W = image_width;
-        return Vec2<uint32_t>(x * H / h, y * W / w);
-    };
-
-    int stride = buffer_width * buffer_channels;
-
-    for (int h = yoff; h < yfill + yoff; ++h)
-    {
-        img = buffer + h * stride + xoff * buffer_channels;
-        for (int w = xoff; w < xfill + xoff; ++w)
-        {
-            auto pos   = mapToImg(yimg + h - yoff, ximg + w - xoff); // -> Retrieve image at position h row w column
-            auto pixel = img_buffer + (pos.x * image_width + pos.y) * image_channels;
-            *img++     = pixel[2];
-            *img++     = pixel[1];
-            *img++     = pixel[0];
-            img++;
-        }
-    }
-}

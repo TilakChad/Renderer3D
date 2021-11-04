@@ -63,15 +63,23 @@ template <cNumeric T> struct Vec2
         return Vec2(x * vec.x, y * vec.y);
     }
 
-    constexpr Vec2 operator*(T scalar) const
+    template <cNumeric U>
+    constexpr auto operator*(U scalar) const
     {
-        return {scalar * x, scalar * y};
+        return Vec2 < decltype(scalar*x)>{scalar * x, scalar * y};
     }
 
     constexpr static Vec3<T> Cross(const Vec2 &vec1, const Vec2 &vec2);
 };
 
+template <cNumeric T, cNumeric U>
+inline constexpr auto operator*(U scalar, Vec2<T> const& vec)
+{
+    return vec * scalar; 
+}
+
 using Vec2f = Vec2<float32>;
+using Vec2u8 = Vec2<uint8_t>;
 
 template <cNumeric T> struct Vec3
 {
