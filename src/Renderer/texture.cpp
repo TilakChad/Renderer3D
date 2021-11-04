@@ -1,4 +1,5 @@
 #include "../include/renderer.h"
+#include "../include/texture.hpp"
 
 Vec3u8 Texture::Sample(Vec2f uv, Interpolation type)
 {
@@ -66,10 +67,10 @@ Vec3u8 Texture::Sample(Vec2f uv, Interpolation type)
 
         auto nColor     = Vec3u8(pixel[0], pixel[1], pixel[2]); // -->Next pixel on the row <-- Guarranted to exist
 
-        // auto fColor     = nColor - cColor; // <-- signed overflow/ unsigned wraparound 
+        // auto fColor     = nColor - cColor; // <-- signed overflow/ unsigned wraparound
         auto fColor =
             Vec3<int16_t>((int16_t)nColor.x - cColor.x, (int16_t)nColor.y - cColor.y, (int16_t)nColor.z - cColor.z);
-        auto rColor     = xfrac * fColor;
+        auto rColor = xfrac * fColor;
 
         return cColor + Vec3u8(rColor.x, rColor.y, rColor.z);
     }
@@ -77,3 +78,4 @@ Vec3u8 Texture::Sample(Vec2f uv, Interpolation type)
     // Bilinear sampling .. next time
     return {};
 }
+
