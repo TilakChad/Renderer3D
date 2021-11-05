@@ -58,27 +58,46 @@ template <cNumeric T> struct Vec2
         return vec1.x * vec2.x + vec1.y * vec2.y;
     }
 
+    float Norm() const
+    {
+        return std::sqrt(x * x + y * y);
+    }
+    float NormSquare() const
+    {
+        return x * x + y * y;
+    }
     constexpr Vec2 operator*(const Vec2 &vec) const
     {
         return Vec2(x * vec.x, y * vec.y);
     }
 
-    template <cNumeric U>
-    constexpr auto operator*(U scalar) const
+    T &operator[](size_t index)
     {
-        return Vec2 < decltype(scalar*x)>{scalar * x, scalar * y};
+        switch (index)
+        {
+        case 0:
+            return x;
+        case 1:
+            return y;
+        default:
+            assert(!"Assertion failed vec2 out of range");
+        }
+    }
+
+    template <cNumeric U> constexpr auto operator*(U scalar) const
+    {
+        return Vec2<decltype(scalar * x)>{scalar * x, scalar * y};
     }
 
     constexpr static Vec3<T> Cross(const Vec2 &vec1, const Vec2 &vec2);
 };
 
-template <cNumeric T, cNumeric U>
-inline constexpr auto operator*(U scalar, Vec2<T> const& vec)
+template <cNumeric T, cNumeric U> inline constexpr auto operator*(U scalar, Vec2<T> const &vec)
 {
-    return vec * scalar; 
+    return vec * scalar;
 }
 
-using Vec2f = Vec2<float32>;
+using Vec2f  = Vec2<float32>;
 using Vec2u8 = Vec2<uint8_t>;
 
 template <cNumeric T> struct Vec3
@@ -89,6 +108,11 @@ template <cNumeric T> struct Vec3
     explicit Vec3(T a) : x{a}, y{a}, z{a}
     {
     }
+
+    explicit Vec3(Vec2<T> xy, T z) : x{xy.x}, y{xy.y}, z{z}
+    {
+    }
+
     Vec3(T x, T y, T z) : x{x}, y{y}, z{z}
     {
     }
@@ -168,3 +192,90 @@ template <cNumeric T> std::ostream &operator<<(std::ostream &os, Vec2<T> vec)
 {
     return os << "x -> " << vec.x << ", y -> " << vec.y << std::endl;
 }
+
+template <cNumeric T> struct Vec4
+{
+    T x, y, z, w; // w is the fourth component
+    Vec4() = default;
+
+    explicit Vec4(T a) : x{a}, y{a}, z{a}, w{a}
+    {
+    }
+    explicit Vec4(Vec2<T> xy, T z, T w) : x{xy.x}, y{xy.y}, z{z}, w{w}
+    {
+    }
+    explicit Vec4(Vec3<T> xyz, T w) : x{xyz.x}, y{xyz.y}, z{xyz.z}, w{w}
+    {
+    }
+    Vec4(T x, T y, T z, T w) : x{x}, y{y}, w{w}, z{z}
+    {
+    }
+    Vec4 operator+(const Vec4 &vec) const
+    {
+        return Vec4(x + vec.x, y + vec.y, z + vec.z, w + vec.w);
+    }
+    Vec4 operator-(const Vec4 &vec) const
+    {
+        return Vec4(x - vec.x, y - vec.y, z - vec.z, w - vec.w);
+    }
+    Vec4 operator*(const Vec4 &vec) const
+    {
+        return Vec4(x * vec.x, y * vec.y, z * vec.z, w * vec.w);
+    }
+
+    Vec4 operator+(T scalar) const
+    {
+        return Vec4(x + scalar, y + scalar, z + scalar, w + scalar);
+    }
+    Vec4 operator-(T scalar) const
+    {
+        return Vec4(x - scalar, y - scalar, z - scalar, w - scalar);
+    }
+    template <cNumeric U> auto operator*(U scalar) const
+    {
+        return Vec4<decltype(scalar * x)>(x * scalar, y * scalar, z * scalar, w * scalar);
+    }
+
+    T &operator[](size_t index)
+    {
+        // LOL ..
+        switch (index)
+        {
+        case 0:
+            return x;
+        case 1:
+            return y;
+        case 2:
+            return z;
+        case 3:
+            return w;
+        default:
+            assert("!Vec4 out of range");
+        }
+    }
+    const T &operator[](size_t index) const
+    {
+        // LOL ..
+        switch (index)
+        {
+        case 0:
+            return x;
+        case 1:
+            return y;
+        case 2:
+            return z;
+        case 3:
+            return w;
+        default:
+            assert("!Vec4 out of range");
+        }
+    }
+};
+
+template <cNumeric U, cNumeric T> auto operator*(U scalar, const Vec4<T> &vec) -> Vec4<decltype(scalar * vec.x)>
+{
+    return vec.operator*(scalar);
+}
+
+using Vec4f  = Vec4<float>;
+using Vec4u8 = Vec4<uint8_t>;
