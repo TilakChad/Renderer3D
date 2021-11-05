@@ -4,6 +4,11 @@
 #include <cstring>
 #include <vector>
 
+// Where to put these info? .. Both rasteriser and ray tracer would need this info though
+// Trying to implement a common abstraction for both rasterizer and raytracer
+
+// Some hacks for not exporting these functions to outside caller 
+
 static std::vector<Texture> Textures;
 static uint32_t             ActiveTexture;
 
@@ -23,7 +28,7 @@ void                        ClearColor(uint8_t r, uint8_t g, uint8_t b)
     }
 }
 
-void FastClearColor(uint8_t r, uint8_t g, uint8_t b)
+void FastClearColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
     // Noice this approach is around 15 times faster than the non optimized one
     // Might write this in assembly lol
@@ -32,10 +37,10 @@ void FastClearColor(uint8_t r, uint8_t g, uint8_t b)
     uint8_t *mem      = platform.colorBuffer.buffer;
     for (int i = 0; i < platform.colorBuffer.width; ++i)
     {
-        *mem++ = b;
-        *mem++ = g;
-        *mem++ = r;
-        *mem++ = 0;
+        *mem++ = b * a/255.0f;
+        *mem++ = g * a/255.0f;
+        *mem++ = r * a/255.0f; 
+        *mem++ = a;
     }
     mem             = platform.colorBuffer.buffer;
 
