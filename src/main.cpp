@@ -6,15 +6,13 @@
 
 // TODO : Cleanup
 // TODO : Make it simpler
-//
-// TODO : Allow Vertex Transform
-//
 // TODO : Optimizing Rasterisation algorithm
 // TODO : Start 3D pipeline
 
 static uint32_t      catTexture;
 static uint32_t      fancyTexture;
 static RenderDevice *Device = nullptr;
+static Mat4f         TransformMatrix;
 
 void                 RendererMainLoop(Platform *platform)
 {
@@ -71,14 +69,19 @@ void                 RendererMainLoop(Platform *platform)
                 std::cout << "Successfully created the cat texture..";
         }
         Device = GetRasteriserDevice();
-        // Device->Context.SetRasteriserMode(RenderDevice::RasteriserMode::NONE_CULL);
+        Device->Context.SetRasteriserMode(RenderDevice::RasteriserMode::NONE_CULL);
         // Device->Context.SetMergeMode(RenderDevice::MergeMode::BLEND_MODE);
         // Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_MODE);
-        Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_BLENDING_MODE);
+        // Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_BLENDING_MODE);
+        TransformMatrix = orthoProjection(0, platform->width, 0, platform->height, 0.0f, 1.0f);
+        Device->Context.SetTransformMatrix(TransformMatrix.translate(Vec3f(250, 0, 0))
+                                               .translate(Vec3f(250, 250, 0))
+                                               .rotateZ(36.0f / 2.0f)
+                                               .translate(Vec3f(-250, -250, 0)));
     }
 
     // ClearColor(0x00, 0xFF, 0x00);
-    FastClearColor(0xC0, 0x00, 0xC0, 0x80);
+    FastClearColor(0x00, 0xFF, 0x00, 0x80);
     /*float          aspect_ratio = platform->width * 1.0f / platform->height;
     VertexAttrib2D v0           = {Vec2f(-0.5f, -0.5f), Vec2f(0.35, 0.35), Vec4f(1.0f, 0.0f, 0.0f, 0.25f)};
     VertexAttrib2D v1           = {Vec2f(0.5f, 0.5f), Vec2f(0.35, 0.65), Vec4f(1.0f, 0.0f, 0.0f, 0.5f)};
@@ -95,22 +98,22 @@ void                 RendererMainLoop(Platform *platform)
 
     static float time_count = 0;
     time_count += platform->deltaTime;
-    // Vertex Transform
+    //// Vertex Transform
     VertexAttrib2D v0              = {Vec2f(100, 100), Vec2f(0.35, 0.35), Vec4f(1.0f, 0.0f, 0.0f, 0.1f)};
     VertexAttrib2D v1              = {Vec2f(100, 400), Vec2f(0.35, 0.65), Vec4f(0.0f, 1.0f, 0.0f, 0.5f)};
-    VertexAttrib2D v2              = {Vec2f(400, 400), Vec2f(0.65, 0.65), Vec4f(0.0f, 0.0f, 1.0f, 0.75f)};
+    VertexAttrib2D v2              = {Vec2f(800, 400), Vec2f(0.65, 0.65), Vec4f(0.0f, 0.0f, 1.0f, 0.75f)};
     VertexAttrib2D v3              = {Vec2f(400, 100), Vec2f(0.65, 0.35), Vec4f(1.0f, 1.0f, 0.0f, 1.0f)};
 
-    Mat4f          TransformMatrix = orthoProjection(0, platform->width, 0, platform->height, 0.0f, 1.0f);
+    //Mat4f          TransformMatrix = orthoProjection(0, platform->width, 0, platform->height, 0.0f, 1.0f);
 
-    Device->Context.SetTransformMatrix(TransformMatrix.translate(Vec3f(250, 0, 0))
-                                           .translate(Vec3f(250, 250, 0))
-                                           .rotateZ(time_count / 2.0f)
-                                           .translate(Vec3f(-250, -250, 0)));
-    SetActiveTexture(catTexture);
+    //Device->Context.SetTransformMatrix(TransformMatrix.translate(Vec3f(250, 0, 0))
+    //                                       .translate(Vec3f(250, 250, 0))
+    //                                       .rotateZ(time_count / 2.0f)
+    //                                       .translate(Vec3f(-250, -250, 0)));
+    // SetActiveTexture(catTexture);
     Device->Draw(v0, v1, v2);
-    SetActiveTexture(fancyTexture);
-    Device->Draw(v0, v2, v3);
+    //SetActiveTexture(fancyTexture);
+    //Device->Draw(v0, v2, v3);
 
     platform->SwapBuffer();
 }

@@ -9,86 +9,11 @@
 
 static RenderDevice Device;
 
-// void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec3<uint8_t> attribA, Vec3<uint8_t> attribB,
-//                Vec3<uint8_t> attribC)
-//{
-//    // Its the triangle rasteriser
-//    // It rasterizes only counter clockwise triangles
-//    //
-//    // To make it work for almost every triangle,
-//    //
-//    // First comes the clipping phase.. anything outside |1| are clipped against the rectangle
-//    // Clipping will be done in previous phase
-//
-//    Platform platform = GetCurrentPlatform();
-//
-//    int      minX     = std::min({x1, x2, x3});
-//    int      maxX     = std::max({x1, x2, x3});
-//
-//    int      minY     = std::min({y1, y2, y3});
-//    int      maxY     = std::max({y1, y2, y3});
-//
-//    // Assume vectors are in clockwise ordering
-//    Vec2     v0   = Vec2(x2, y2) - Vec2(x1, y1);
-//    Vec2     v1   = Vec2(x3, y3) - Vec2(x2, y2);
-//    Vec2     v2   = Vec2(x1, y1) - Vec2(x3, y3);
-//
-//    Vec2     vec1 = Vec2(x1, y1);
-//    Vec2     vec2 = Vec2(x2, y2);
-//    Vec2     vec3 = Vec2(x3, y3);
-//
-//    uint8_t *mem;
-//
-//    // potential for paralellization
-//
-//    int32_t       area = Vec2<int>::Determinant(v1, v0);
-//
-//    float         l1 = 0, l2 = 0, l3 = 0; // Barycentric coordinates
-//
-//    Vec3<uint8_t> resultColor;
-//    for (int h = minY; h <= maxY; ++h)
-//    {
-//        int32_t offset =
-//            (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
-//        mem = platform.colorBuffer.buffer + offset;
-//        mem = mem + minX * platform.colorBuffer.noChannels;
-//
-//        // This is a very tight loop and need to be optimized heavily even for a suitable framerate
-//        for (int w = minX; w <= maxX; ++w)
-//        {
-//            Vec2 point = Vec2(w, h);
-//            auto a1    = Vec2<int>::Determinant(point - vec1, v0);
-//            auto a2    = Vec2<int>::Determinant(point - vec2, v1);
-//            auto a3    = Vec2<int>::Determinant(point - vec3, v2);
-//
-//            if ((a1 >= 0 && a2 >= 0 &&
-//                 a3 >=
-//                     0)) //  || (a1 < 0 && a2 < 0 && a3 < 0)) // --> Turns on rasterization of anti clockwise
-//                     triangles
-//            {
-//                auto r = (attribA.x * a2 + attribB.x * a3 + attribC.x * a1) / area;
-//                auto g = (attribA.y * a2 + attribB.y * a3 + attribC.y * a1) / area;
-//                auto b = (attribA.z * a2 + attribB.z * a3 + attribC.z * a1) / area;
-//                mem[0] = b;
-//                mem[1] = g;
-//                mem[2] = r;
-//                mem[3] = 0x00;
-//            }
-//            mem = mem + 4;
-//        }
-//    }
-//}
-
 void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec4f attribA, Vec4f attribB, Vec4f attribC, Vec2f texA,
                 Vec2f texB, Vec2f texC)
 {
     // Its the triangle rasteriser
-    // It rasterizes only counter clockwise triangles
-    //
-    // To make it work for almost every triangle,
-    //
-    // First comes the clipping phase.. anything outside |1| are clipped against the rectangle
-    // Clipping will be done in previous phase
+    // It can optionally cull front face, back face or null
     Platform platform = GetCurrentPlatform();
 
     int      minX     = std::min({x1, x2, x3});
@@ -115,64 +40,77 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec4f attribA, V
     if (area < 0 && Device.Context.ActiveRasteriserMode == RenderDevice::RasteriserMode::BACK_FACE_CULL)
         return;
 
-    float l1, l2, l3; // Barycentric coordinates
+    float    l1, l2, l3; // Barycentric coordinates
+
+    Vec2     point = Vec2(minX, minY);
+    auto     a1_   = Vec2<int32_t>::Determinant(point - vec1, v0);
+    auto     a2_   = Vec2<int32_t>::Determinant(point - vec2, v1);
+    auto     a3_   = Vec2<int32_t>::Determinant(point - vec3, v2);
+    int32_t  a1, a2, a3;
+    uint32_t stride = platform.colorBuffer.width * platform.colorBuffer.noChannels;
 
     // Code duplication better than per pixel check
     if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::COLOR_MODE)
     {
+        //// My optimized rasterization
+        //
         for (int h = minY; h <= maxY; ++h)
         {
-            int32_t offset =
-                (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
-            mem = platform.colorBuffer.buffer + offset;
-            mem = mem + minX * platform.colorBuffer.noChannels;
+            int32_t offset = (platform.colorBuffer.height - 1 - h) * stride;
+            mem            = platform.colorBuffer.buffer + offset;
+            mem            = mem + minX * platform.colorBuffer.noChannels;
+
+            a1             = a1_;
+            a2             = a2_;
+            a3             = a3_;
 
             // This is a very tight loop and need to be optimized heavily even for a suitable framerate
             for (int w = minX; w <= maxX; ++w)
             {
-                Vec2 point = Vec2(w, h);
-                auto a1    = Vec2<int>::Determinant(point - vec1, v0);
-                auto a2    = Vec2<int>::Determinant(point - vec2, v1);
-                auto a3    = Vec2<int>::Determinant(point - vec3, v2);
-
-                if ((a1 >= 0 && a2 >= 0 && a3 >= 0) || (a1 < 0 && a2 < 0 && a3 < 0)) // --> Turns on rasterization of
-                                                                                     //  anti clockwise triangles
+                if (((a1 | a2 | a3) >= 0) || ((a1 & a2 & a3) < 0)) // --> Turns on rasterization of
+                                                                   //  anti clockwise triangles
                 {
-                    l1              = static_cast<float>(a2) / area;
-                    l2              = static_cast<float>(a3) / area;
-                    l3              = static_cast<float>(a1) / area;
+                    l1 = static_cast<float>(a2) / area;
+                    l2 = static_cast<float>(a3) / area;
+                    l3 = static_cast<float>(a1) / area;
+
+                    // Need to vectorize this things after I learn some SIMD instructions first .. Let's go with it for
+                    // now
                     Vec4f src_color = l1 * attribA + l2 * attribB + l3 * attribC;
 
                     mem[0]          = static_cast<uint8_t>(src_color.z * 255);
                     mem[1]          = static_cast<uint8_t>(src_color.y * 255);
                     mem[2]          = static_cast<uint8_t>(src_color.x * 255);
-                    mem[3]          = src_color.w;
+                    mem[3]          = static_cast<uint8_t>(src_color.w * 255);
                 }
+                a1  = a1 + v0.y;
+                a2  = a2 + v1.y;
+                a3  = a3 + v2.y;
                 mem = mem + 4;
             }
+            a1_ = a1_ - v0.x;
+            a2_ = a2_ - v1.x;
+            a3_ = a3_ - v2.x;
         }
     }
     // Texture texture;
     else if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::BLEND_MODE)
     {
-        // TODO : Destination alpha is not considered yet
         for (int h = minY; h <= maxY; ++h)
         {
             int32_t offset =
                 (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
             mem = platform.colorBuffer.buffer + offset;
             mem = mem + minX * platform.colorBuffer.noChannels;
+            a1  = a1_;
+            a2  = a2_;
+            a3  = a3_;
 
             // This is a very tight loop and need to be optimized heavily even for a suitable framerate
             for (int w = minX; w <= maxX; ++w)
             {
-                Vec2 point = Vec2(w, h);
-                auto a1    = Vec2<int>::Determinant(point - vec1, v0);
-                auto a2    = Vec2<int>::Determinant(point - vec2, v1);
-                auto a3    = Vec2<int>::Determinant(point - vec3, v2);
-
-                if ((a1 >= 0 && a2 >= 0 && a3 >= 0) || (a1 < 0 && a2 < 0 && a3 < 0)) // --> Turns on rasterization of
-                                                                                     //  anti clockwise triangles
+                if ((a1 | a2 | a3) >= 0 || (a1 & a2 & a3) < 0) // --> Turns on rasterization of
+                                                               //  anti clockwise triangles
                 {
 
                     // SRC_ALPHA and ONE_MINUS_SRC_ALPHA blending
@@ -195,8 +133,14 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec4f attribA, V
                     mem[2]      = static_cast<uint8_t>(color.x * 255);
                     mem[3]      = static_cast<uint8_t>(alpha * 255);
                 }
+                a1  = a1 + v0.y;
+                a2  = a2 + v1.y;
+                a3  = a3 + v2.y;
                 mem = mem + 4;
             }
+            a1_ = a1_ - v0.x;
+            a2_ = a2_ - v1.x;
+            a3_ = a3_ - v2.x;
         }
     }
     else if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::TEXTURE_MODE)
@@ -209,16 +153,15 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec4f attribA, V
             mem = platform.colorBuffer.buffer + offset;
             mem = mem + minX * platform.colorBuffer.noChannels;
 
+            a1  = a1_;
+            a2  = a2_;
+            a3  = a3_;
+
             // This is a very tight loop and need to be optimized heavily even for a suitable framerate
             for (int w = minX; w <= maxX; ++w)
             {
-                Vec2 point = Vec2(w, h);
-                auto a1    = Vec2<int>::Determinant(point - vec1, v0);
-                auto a2    = Vec2<int>::Determinant(point - vec2, v1);
-                auto a3    = Vec2<int>::Determinant(point - vec3, v2);
-
-                if ((a1 >= 0 && a2 >= 0 && a3 >= 0) || (a1 < 0 && a2 < 0 && a3 < 0)) // --> Turns on rasterization of
-                                                                                     //  anti clockwise triangles
+                if ((a1 | a2 | a3) >= 0 ||
+                    (a1 & a2 & a3) < 0) // --> Turns on rasterization of //  anti clockwise triangles
                 {
 
                     l1       = static_cast<float>(a2) / area;
@@ -232,8 +175,14 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec4f attribA, V
                     mem[2]   = rgb.x;
                     mem[3]   = 0x00;
                 }
+                a1  = a1 + v0.y;
+                a2  = a2 + v1.y;
+                a3  = a3 + v2.y;
                 mem = mem + 4;
             }
+            a1_ = a1_ - v0.x;
+            a2_ = a2_ - v1.x;
+            a3_ = a3_ - v2.x;
         }
     }
     else if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::TEXTURE_BLENDING_MODE)
@@ -246,14 +195,13 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec4f attribA, V
             mem = platform.colorBuffer.buffer + offset;
             mem = mem + minX * platform.colorBuffer.noChannels;
 
+            a1  = a1_;
+            a2  = a2_;
+            a3  = a3_;
+
             // This is a very tight loop and need to be optimized heavily even for a suitable framerate
             for (int w = minX; w <= maxX; ++w)
             {
-                Vec2 point = Vec2(w, h);
-                auto a1    = Vec2<int>::Determinant(point - vec1, v0);
-                auto a2    = Vec2<int>::Determinant(point - vec2, v1);
-                auto a3    = Vec2<int>::Determinant(point - vec3, v2);
-
                 if ((a1 >= 0 && a2 >= 0 && a3 >= 0) || (a1 < 0 && a2 < 0 && a3 < 0)) // --> Turns on rasterization of
                                                                                      //  anti clockwise triangles
                 {
@@ -279,8 +227,15 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec4f attribA, V
                     mem[2]      = color.x * 255;
                     mem[3]      = alpha * 255;
                 }
+                a1  = a1 + v0.y;
+                a2  = a2 + v1.y;
+                a3  = a3 + v2.y;
                 mem = mem + 4;
             }
+
+            a1_ = a1_ - v0.x;
+            a2_ = a2_ - v1.x;
+            a3_ = a3_ - v2.x;
         }
     }
 }
@@ -451,7 +406,7 @@ void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
     //}
     // Lets try drawing a fan instead of consecutive closed triangles
 
-    for (int vertex = 0; vertex < outVertices.size() - 1; vertex += 1)
+    for (int vertex = 1; vertex < outVertices.size() - 1; vertex += 1)
     {
         ScreenSpace(outVertices.at(0), outVertices.at(vertex), outVertices.at((vertex + 1) % outVertices.size()));
     }
