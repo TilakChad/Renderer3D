@@ -1,6 +1,6 @@
 #pragma once
-#include <cstdint>
 #include <cassert>
+#include <cstdint>
 
 using float32 = float;
 using float64 = double;
@@ -23,14 +23,22 @@ struct Platform
         uint8_t  noChannels;
     } colorBuffer;
 
+    struct
+    {
+        // No stencil buffer, only depth buffer for now.. with single precision floating point depth
+        float *  buffer = nullptr;
+        uint32_t width;
+        uint32_t height;
+    } zBuffer;
+
     SwapBufferFn SwapBuffer;
     bool         bFirst = true;
-    struct 
+    struct
     {
-        bool bMouseScrolled = false; 
+        bool    bMouseScrolled = false;
         int32_t value          = 0;
     } Mouse;
 };
 
-void RendererMainLoop(Platform *platform);
+void     RendererMainLoop(Platform *platform);
 Platform GetCurrentPlatform(void);

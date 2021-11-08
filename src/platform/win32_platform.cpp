@@ -45,7 +45,9 @@ void ResizeWritableBitmap(uint32_t width, uint32_t height)
     win32.renderBuffer.bmpInfo.bmiHeader.biHeight = -(int32_t)height;
     if (win32.renderBuffer.colorBuffer)
         VirtualFree(win32.renderBuffer.colorBuffer, 0, MEM_RELEASE);
+
     uint8_t bytesPerPixel = win32.renderBuffer.bmpInfo.bmiHeader.biBitCount / 8;
+
     win32.renderBuffer.colorBuffer =
         (uint8_t *)VirtualAlloc(nullptr, width * height * bytesPerPixel, MEM_COMMIT, PAGE_READWRITE);
 
@@ -57,7 +59,17 @@ void ResizeWritableBitmap(uint32_t width, uint32_t height)
     win32Platform.colorBuffer.height     = height;
     win32Platform.colorBuffer.buffer     = win32.renderBuffer.colorBuffer;
 
+    if (win32Platform.zBuffer.buffer)
+        VirtualFree(win32Platform.zBuffer.buffer,0,MEM_RELEASE);
+
+    uint32_t zMemorySize = width * height * sizeof(float);
+    win32Platform.zBuffer.buffer =
+        (float *)VirtualAlloc(nullptr, width * height * sizeof(float), MEM_COMMIT, PAGE_READWRITE);
+    win32Platform.zBuffer.width = width; 
+    win32Platform.zBuffer.height = height; 
+
     assert(win32.renderBuffer.colorBuffer != nullptr);
+    assert(win32Platform.zBuffer.buffer);
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR CmdLine, int nCmdShow)
