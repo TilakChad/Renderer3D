@@ -5,9 +5,9 @@
 template <cNumeric T> struct Mat4
 {
     // Might use row major (row first filling) semantics, Not goint with openGL style
-    T mat[4][4] = {};
+    T mat[4][4]      = {};
 
-    constexpr Mat4()      = default;
+    constexpr Mat4() = default;
 
     // Fills the diagonal
     constexpr Mat4(T fill)
@@ -56,7 +56,7 @@ template <cNumeric T> struct Mat4
         return matrix;
     }
 
-    //constexpr Mat4 operator*(const Mat4 &amatrix) const
+    // constexpr Mat4 operator*(const Mat4 &amatrix) const
     //{
     //    Mat4 matrix;
     //    // Cache efficient matrix multiplication
@@ -118,17 +118,33 @@ template <cNumeric T> struct Mat4
     }
 };
 
-inline Mat4<float> orthoProjection(float left, float right, float bottom, float top, float zNear, float zFar)
+inline Mat4<float> OrthoProjection(float left, float right, float bottom, float top, float zNear, float zFar)
 {
     Mat4<float> matrix(1.0f);
-    matrix[0][0]                      = 2.0f / (right - left);
-    matrix[1][1]                    = 2.0f / (top - bottom);
-    matrix[2][2]                    = -2.0f / (zFar - zNear);
+    matrix[0][0] = 2.0f / (right - left);
+    matrix[1][1] = 2.0f / (top - bottom);
+    matrix[2][2] = -2.0f / (zFar - zNear);
 
-    matrix[0][3]                    = (right + left) / (left - right);
-    matrix[1][3]                    = (top + bottom) / (bottom - top);
-    matrix[2][3]                    = (zFar + zNear) / (zNear - zFar);
+    matrix[0][3] = (right + left) / (left - right);
+    matrix[1][3] = (top + bottom) / (bottom - top);
+    matrix[2][3] = (zFar + zNear) / (zNear - zFar);
     return matrix;
 }
 
 using Mat4f = Mat4<float>;
+
+inline Mat4f Perspective(float aspect_ratio, float fovy = 1.0f/3 * 3.141592, float near_plane = 0.1f, float far_plane = 10.0f)
+{
+    Mat4f matrix(1.0f);
+    float tan_fovy = std::sin(fovy) / std::cos(fovy);
+    float top      = near_plane * tan_fovy;
+    float right    = aspect_ratio * top;
+
+    matrix[0][0]       = near_plane / right;
+    matrix[1][1]       = near_plane / top;
+    matrix[3][2]       = -1;
+    matrix[2][3]       = -2 * far_plane * near_plane / (far_plane - near_plane);
+    matrix[2][2]       = -(far_plane + near_plane) / (far_plane - near_plane);
+    matrix[3][3]       = 0;
+    return matrix;
+}

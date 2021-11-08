@@ -21,3 +21,7 @@ void     ImageViewer(uint8_t *img_buffer, uint8_t *buffer, uint32_t image_width,
                      uint32_t image_channels, uint32_t buffer_width, uint32_t buffer_height, uint32_t buffer_channels,
                      uint32_t target_width, uint32_t target_height);
 
+namespace Pipeline3D
+{
+void ClearDepthBuffer();
+}

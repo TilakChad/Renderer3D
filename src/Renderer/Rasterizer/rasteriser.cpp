@@ -240,7 +240,7 @@ void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec4f attribA, V
     }
 }
 
-void ScreenSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
+void ScreenSpace(Pipeline2D::VertexAttrib2D v0, Pipeline2D::VertexAttrib2D v1, Pipeline2D::VertexAttrib2D v2)
 {
     // ClipSpace({x1, y1}, {x2, y2}, {x3, y3});
     Platform platform = GetCurrentPlatform();
@@ -260,7 +260,7 @@ void ScreenSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
 
 // Polygon Clipping using Sutherland-Hodgeman algorithm in NDC space before screen space mapping
 
-void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
+void ClipSpace(Pipeline2D::VertexAttrib2D v0, Pipeline2D::VertexAttrib2D v1, Pipeline2D::VertexAttrib2D v2)
 {
     // Triangle defined by vertices v0, v1, and v2
     /*
@@ -275,10 +275,10 @@ void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
     |_____________________|
  (-1,-1)                (1,-1)
     */
-    std::vector<VertexAttrib2D> outVertices{v0, v1, v2};
+    std::vector<Pipeline2D::VertexAttrib2D> outVertices{v0, v1, v2};
     outVertices.reserve(5);
 
-    std::vector<VertexAttrib2D> inVertices{};
+    std::vector<Pipeline2D::VertexAttrib2D> inVertices{};
     inVertices.reserve(5);
 
     auto const clipPoly =
@@ -362,7 +362,7 @@ void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
                 // point1 and point2 are same and are the intersection obtained by clipping against the clipping Poly
                 // Since they lie on the edge of the triangle, vertex attributes can be linearly interpolated across
                 // those two vertices
-                VertexAttrib2D inter;
+                Pipeline2D::VertexAttrib2D inter;
                 inter.Position = point1;
 
                 if (fabs(v1.Position.x - v0.Position.x) > fabs(v1.Position.y - v0.Position.y))
@@ -412,7 +412,8 @@ void ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2)
     }
 }
 
-void RenderDevice::Draw(VertexAttrib2D const &v0, VertexAttrib2D const &v1, VertexAttrib2D const &v2)
+void RenderDevice::Draw(Pipeline2D::VertexAttrib2D const &v0, Pipeline2D::VertexAttrib2D const &v1,
+                        Pipeline2D::VertexAttrib2D const &v2)
 {
     // Pass through transform matrix first
     auto pos0    = Device.Context.SceneMatrix * Vec4(v0.Position, 0.0f, 1.0f);
@@ -439,7 +440,7 @@ void RenderDevice::CTX::SetMergeMode(MergeMode mode)
     ActiveMergeMode = mode;
 }
 
-void BresenhamLineRasteriser(VertexAttrib2D const &v0, VertexAttrib2D const &v1)
+void BresenhamLineRasteriser(Pipeline2D::VertexAttrib2D const &v0, Pipeline2D::VertexAttrib2D const &v1)
 {
     // Line clipping first
     auto const clipPoly =
@@ -450,10 +451,10 @@ void BresenhamLineRasteriser(VertexAttrib2D const &v0, VertexAttrib2D const &v1)
     for (int i = 0; i < clipPoly.size(); ++i)
         clipLines.at(i) = clipPoly.at((i + 1) % clipPoly.size()) - clipPoly.at(i);
 
-    size_t                      vert = 0;
+    size_t                                  vert = 0;
 
-    std::vector<VertexAttrib2D> outVertices;
-    std::vector<VertexAttrib2D> inVertices;
+    std::vector<Pipeline2D::VertexAttrib2D> outVertices;
+    std::vector<Pipeline2D::VertexAttrib2D> inVertices;
 
     outVertices.clear();
     outVertices = {v0, v1};
@@ -483,7 +484,7 @@ void BresenhamLineRasteriser(VertexAttrib2D const &v0, VertexAttrib2D const &v1)
                 auto intersection = LineIntersect(clipPoly[vert], clipPoly[vert] + line, v0.Position, v1.Position);
                 auto point1       = clipPoly[vert] + line * intersection.x;
 
-                VertexAttrib2D inter;
+                Pipeline2D::VertexAttrib2D inter;
                 inter.Position = point1;
 
                 if (fabs(v1.Position.x - v0.Position.x) > fabs(v1.Position.y - v0.Position.y))
@@ -595,7 +596,213 @@ void BresenhamLineRasteriser(VertexAttrib2D const &v0, VertexAttrib2D const &v1)
     }
 }
 
-void RenderDevice::Draw(VertexAttrib2D const &v0, VertexAttrib2D const &v1)
+void RenderDevice::Draw(Pipeline2D::VertexAttrib2D const &v0, Pipeline2D::VertexAttrib2D const &v1)
 {
     BresenhamLineRasteriser(v0, v1);
 }
+
+namespace Pipeline3D
+{
+
+void Rasteriser(int32_t x0, int32_t y0, float z0, int32_t x1, int32_t y1, float z1, int32_t x2, int32_t y2, float z2,
+                Vec4f colorA, Vec4f colorB, Vec4f colorC, Vec2f texA, Vec2f texB, Vec2f texC)
+{
+    // Its the triangle rasteriser
+    // It can optionally cull front face, back face or null
+    Platform platform = GetCurrentPlatform();
+
+    int      minX     = std::min({x0, x1, x2});
+    int      maxX     = std::max({x0, x1, x2});
+
+    int      minY     = std::min({y0, y1, y2});
+    int      maxY     = std::max({y0, y1, y2});
+
+    // Assume vectors are in clockwise ordering
+    Vec2     v0   = Vec2(x1, y1) - Vec2(x0, y0);
+    Vec2     v1   = Vec2(x2, y2) - Vec2(x1, y1);
+    Vec2     v2   = Vec2(x0, y0) - Vec2(x2, y2);
+
+    Vec2     vec0 = Vec2(x0, y0);
+    Vec2     vec1 = Vec2(x1, y1);
+    Vec2     vec2 = Vec2(x2, y2);
+
+    uint8_t *mem;
+    // potential for paralellization
+    int32_t area = Vec2<int>::Determinant(v1, v0);
+
+    // Perspective depth interpolation, perspective correct texture interpolation ....
+    float    l1, l2, l3; // Barycentric coordinates
+
+    Vec2     point = Vec2(minX, minY);
+    auto     a1_   = Vec2<int32_t>::Determinant(point - vec0, v0);
+    auto     a2_   = Vec2<int32_t>::Determinant(point - vec1, v1);
+    auto     a3_   = Vec2<int32_t>::Determinant(point - vec2, v2);
+    int32_t  a1, a2, a3;
+    uint32_t stride = platform.colorBuffer.width * platform.colorBuffer.noChannels;
+
+    // Code duplication better than per pixel check
+    if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::TEXTURE_MODE)
+    {
+        //// My optimized rasterization
+        
+         for (int h = minY; h <= maxY; ++h)
+        {
+            auto texture = Device.Context.GetActiveTexture();
+            for (int h = minY; h <= maxY; ++h)
+            {
+                int32_t offset = (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width *
+                                 platform.colorBuffer.noChannels;
+                mem = platform.colorBuffer.buffer + offset;
+                mem = mem + minX * platform.colorBuffer.noChannels;
+
+                a1  = a1_;
+                a2  = a2_;
+                a3  = a3_;
+
+                // This is a very tight loop and need to be optimized heavily even for a suitable framerate
+                for (int w = minX; w <= maxX; ++w)
+                {
+                    if ((a1 | a2 | a3) >= 0 ||
+                        (a1 & a2 & a3) < 0) // --> Turns on rasterization of //  anti clockwise triangles
+                    {
+
+                        l1      = static_cast<float>(a2) / area;
+                        l2      = static_cast<float>(a3) / area;
+                        l3      = static_cast<float>(a1) / area;
+
+                        auto uv = l1 * texA + l2 * texB + l3 * texC;
+
+                        // Interpolate the depth perspective correctly
+                        float z     = l1 * 1 / z0 + l2 * 1 / z1 + l3 * 1 / z2;
+                        z           = 1.0f / z;
+                        auto  rgb   = texture.Sample(Vec2(uv), Texture::Interpolation::NEAREST);
+                        auto &depth = platform.zBuffer.buffer[h * platform.zBuffer.width + w];
+                        if (z < depth)
+                        {
+                            depth  = z;
+                            mem[0] = rgb.z;
+                            mem[1] = rgb.y;
+                            mem[2] = rgb.x;
+                            mem[3] = 0x00;
+                        }
+                    }
+                    a1  = a1 + v0.y;
+                    a2  = a2 + v1.y;
+                    a3  = a3 + v2.y;
+                    mem = mem + 4;
+                }
+                a1_ = a1_ - v0.x;
+                a2_ = a2_ - v1.x;
+                a3_ = a3_ - v2.x;
+            }
+        }
+    }
+}
+
+void ScreenSpace(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
+{
+    // ClipSpace({x1, y1}, {x2, y2}, {x3, y3});
+    //
+    v0.Position = v0.Position.PerspectiveDivide();
+    v1.Position = v1.Position.PerspectiveDivide();
+    v2.Position = v2.Position.PerspectiveDivide();
+
+    // It must pass through 2D clipping though .. lets see what happens
+
+    Platform platform = GetCurrentPlatform();
+    int      x0       = static_cast<int>((platform.width - 1) / 2 * (v0.Position.x + 1));
+    int      y0       = static_cast<int>((platform.height - 1) / 2 * (1 + v0.Position.y));
+
+    int      x1       = static_cast<int>((platform.width - 1) / 2 * (v1.Position.x + 1));
+    int      y1       = static_cast<int>((platform.height - 1) / 2 * (1 + v1.Position.y));
+
+    int      x2       = static_cast<int>((platform.width - 1) / 2 * (v2.Position.x + 1));
+    int      y2       = static_cast<int>((platform.height - 1) / 2 * (1 + v2.Position.y));
+
+    float    z0       = v0.Position.z;
+    float    z1       = v1.Position.z;
+    float    z2       = v2.Position.z;
+
+    Rasteriser(x0, y0, z0, x1, y1, z1, x2, y2, z2, v0.Color, v1.Color, v2.Color, v0.TexCoord, v1.TexCoord, v2.TexCoord);
+}
+
+void Clip3D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
+{
+    // Before perspective division, clipping would take place
+    // Not bothering it to clip against other planes, either take it or reject it fully
+
+    // Code duplication bettter than runtime checks
+    // Check against far plane
+    if (v0.Position.z > v0.Position.w && v1.Position.z > v1.Position.w && v2.Position.z > v2.Position.w)
+        return;
+    // Triangle fully rejected
+    // Check for right and left boundary
+    if (v1.Position.x < -v0.Position.w && v1.Position.x < -v1.Position.w && v2.Position.x < -v2.Position.w)
+        return;
+    if (v1.Position.x > v0.Position.w && v1.Position.x > v1.Position.w && v2.Position.x > v2.Position.w)
+        return;
+    if (v1.Position.y < -v0.Position.w && v1.Position.y < -v1.Position.w && v2.Position.y < -v2.Position.w)
+        return;
+    if (v1.Position.y > v0.Position.w && v1.Position.y > v1.Position.w && v2.Position.y > v2.Position.w)
+        return;
+    if (v1.Position.z > v0.Position.w && v1.Position.z > v1.Position.w && v2.Position.z > v2.Position.w)
+        return;
+    if (v0.Position.z < 0 && v1.Position.z < 0 && v2.Position.z < 0)
+        return;
+    // std::cout << "Triangle does not lie fully outside the clipping boundary" << std::endl;
+
+    std::vector<VertexAttrib3D> inVertices{v0, v1, v2};
+    std::vector<VertexAttrib3D> outVertices;
+
+    for (int i = 0; i < inVertices.size(); ++i)
+    {
+        auto v0   = inVertices.at(i);
+        auto v1   = inVertices.at((i + 1) % inVertices.size());
+        bool head = v1.Position.z >= 0;
+        bool tail = v0.Position.z >= 0;
+        if (head && tail)
+            outVertices.push_back(v1); // <-- If both are inside the clipping near plane, add the head
+        else if (!(head || tail))
+        {
+            // <-- If any part is inside or outsie, interpolate along the z axis, all parameters
+            float          t  = (-v0.Position.z) / (v1.Position.z - v0.Position.z);
+            auto           pn = v0.Position + t * (v1.Position - v0.Position);
+            VertexAttrib3D vn;
+            vn.Position = pn;
+            outVertices.push_back(vn);
+            if (head)
+                outVertices.push_back(vn);
+        }
+    }
+    for (int vertex = 1; vertex < outVertices.size() - 1; vertex += 1)
+    {
+        ScreenSpace(outVertices.at(0), outVertices.at(vertex), outVertices.at((vertex + 1) % outVertices.size()));
+    }
+}
+// First thing, vertex transform
+void Draw(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, Mat4f const &matrix)
+{
+    // It will probably transform them into homogenous co-ordinates
+    v0.Position = matrix * v0.Position;
+    v1.Position = matrix * v1.Position;
+    v2.Position = matrix * v2.Position;
+
+    // We are going to clip it against near z plane only
+    // Remaining clipping will occur in 2D before Rasterisation stage
+    // It saves up from headache of clipping against all six clipping boundaries
+
+    // Clipping most probably occurs before perspective division phase, when all attributes are linear in space
+
+    // Like in OpenGL, depth value will range from 0 to 1
+    // Near pixel have depth value of 0 and farther pixel have depth value 1
+
+    // If clipping occurs in homogenous co-ordinates, the projection matrix makes w = positive;
+    // Positive w means, anything towards me nearer from near plane, is to be clipped.
+    // Clipping against other boundaries won't take place in Homogenous co-ordinates
+    // Not sure, why near plane clipping is also being taken place in homogenous system
+    // A round through perspective projection matrix again
+
+    // Near plane clipping will introduce one extra triangle at most.
+    Clip3D(v0, v1, v2);
+}
+} // namespace Pipeline3D

@@ -236,6 +236,10 @@ template <cNumeric T> struct Vec4
         return Vec4<decltype(scalar * x)>(x * scalar, y * scalar, z * scalar, w * scalar);
     }
 
+    Vec4 PerspectiveDivide() const 
+    {
+        return Vec4(x / w, y / w, z / w, w / w);
+    }
     T &operator[](size_t index)
     {
         // LOL ..
@@ -279,3 +283,10 @@ template <cNumeric U, cNumeric T> auto operator*(U scalar, const Vec4<T> &vec) -
 
 using Vec4f  = Vec4<float>;
 using Vec4u8 = Vec4<uint8_t>;
+
+template <cNumeric T> 
+inline std::ostream &operator<<(std::ostream& os, const Vec4<T>& vec)
+{
+    return os << "Vec4() -> "
+              << "x : " << vec.x << ", y : " << vec.y << ", z : " << vec.z << ", w : " << vec.w << std::endl;
+}

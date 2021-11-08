@@ -9,6 +9,8 @@
 // We will start with some simple.. Rasterizing a triangle in a simple fashion
 
 // This rasterizer will only work on triangles for now
+namespace Pipeline2D
+{
 
 struct VertexAttrib2D
 {
@@ -17,6 +19,9 @@ struct VertexAttrib2D
     Vec4f Color;
 };
 
+} // namespace Pipeline2D
+
+// Need seperate interface for 3D pipeline ?
 struct RenderDevice // <-- Similiar to DirectX device
 {
 
@@ -49,7 +54,7 @@ struct RenderDevice // <-- Similiar to DirectX device
     {
         Topology       ActiveTopology{Topology::TRIANGLES}; // <-- Default topology
         RasteriserMode ActiveRasteriserMode{RasteriserMode::BACK_FACE_CULL};
-        MergeMode       ActiveMergeMode{MergeMode::COLOR_MODE};
+        MergeMode      ActiveMergeMode{MergeMode::COLOR_MODE};
         Mat4<float>    SceneMatrix{1.0f}; // <-- internal matrix
 
         uint32_t       ActiveTexture{};
@@ -76,19 +81,33 @@ struct RenderDevice // <-- Similiar to DirectX device
             return ::GetActiveTexture();
         }
 
-        void SetTransformMatrix(const Mat4f& matrix)
+        void SetTransformMatrix(const Mat4f &matrix)
         {
             SceneMatrix = matrix;
         }
 
     } Context;
 
-    void Draw(VertexAttrib2D const &v0, VertexAttrib2D const &v1);                           // <-- Draw lines
-    void Draw(VertexAttrib2D const &v0, VertexAttrib2D const &v1, VertexAttrib2D const &v2); // <-- Draw triangles
+    void Draw(Pipeline2D::VertexAttrib2D const &v0, Pipeline2D::VertexAttrib2D const &v1); // <-- Draw lines
+    void Draw(Pipeline2D::VertexAttrib2D const &v0, Pipeline2D::VertexAttrib2D const &v1,
+              Pipeline2D::VertexAttrib2D const &v2); // <-- Draw triangles
 
   private:
-
 };
 
-void          ClipSpace(VertexAttrib2D v0, VertexAttrib2D v1, VertexAttrib2D v2);
+void          ClipSpace(Pipeline2D::VertexAttrib2D v0, Pipeline2D::VertexAttrib2D v1, Pipeline2D::VertexAttrib2D v2);
 RenderDevice *GetRasteriserDevice();
+
+namespace Pipeline3D
+{
+struct VertexAttrib3D
+{
+    Vec4f Position;
+    Vec2f TexCoord;
+    Vec4f Color;
+};
+} // namespace Pipeline3D
+namespace Pipeline3D
+{
+void Draw(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, Mat4f const &matrix);
+}

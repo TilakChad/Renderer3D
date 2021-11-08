@@ -7,7 +7,7 @@
 // Where to put these info? .. Both rasteriser and ray tracer would need this info though
 // Trying to implement a common abstraction for both rasterizer and raytracer
 
-// Some hacks for not exporting these functions to outside caller 
+// Some hacks for not exporting these functions to outside caller
 
 static std::vector<Texture> Textures;
 static uint32_t             ActiveTexture;
@@ -37,9 +37,9 @@ void FastClearColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
     uint8_t *mem      = platform.colorBuffer.buffer;
     for (int i = 0; i < platform.colorBuffer.width; ++i)
     {
-        *mem++ = b * a/255.0f;
-        *mem++ = g * a/255.0f;
-        *mem++ = r * a/255.0f; 
+        *mem++ = b * a / 255.0f;
+        *mem++ = g * a / 255.0f;
+        *mem++ = r * a / 255.0f;
         *mem++ = a;
     }
     mem             = platform.colorBuffer.buffer;
@@ -154,3 +154,18 @@ void ImageViewer(uint8_t *img_buffer, uint8_t *buffer, uint32_t image_width, uin
         }
     }
 }
+
+namespace Pipeline3D
+{
+void ClearDepthBuffer()
+{
+    auto platform = GetCurrentPlatform();
+    for (uint32_t h = 0; h < platform.zBuffer.height; ++h)
+    {
+        for (uint32_t w = 0; w < platform.zBuffer.width; ++w)
+        {
+            platform.zBuffer.buffer[h * platform.zBuffer.width + w] = 1.0f;
+        }
+    }
+}
+} // namespace Pipelin3D
