@@ -105,6 +105,15 @@ template <cNumeric T> struct Mat4
         return *this * matrix;
     }
 
+    constexpr Mat4 scale(Vec3<T>const& vec)
+    {
+        Mat4 matrix(1);
+        matrix[0][0] = vec.x;
+        matrix[1][1] = vec.y;
+        matrix[2][2] = vec.z;
+        return *this * matrix;
+    }
+
     constexpr Vec4<T> operator*(const Vec4<T> &avec) const
     {
         Vec4<T> vec(T{});
@@ -133,18 +142,51 @@ inline Mat4<float> OrthoProjection(float left, float right, float bottom, float 
 
 using Mat4f = Mat4<float>;
 
-inline Mat4f Perspective(float aspect_ratio, float fovy = 1.0f/3 * 3.141592, float near_plane = 0.1f, float far_plane = 10.0f)
+inline Mat4f Perspective(float aspect_ratio, float fovy = 1.0f / 3 * 3.141592, float near_plane = 0.1f,
+                         float far_plane = 10.0f)
 {
     Mat4f matrix(1.0f);
     float tan_fovy = std::sin(fovy) / std::cos(fovy);
     float top      = near_plane * tan_fovy;
     float right    = aspect_ratio * top;
 
-    matrix[0][0]       = near_plane / right;
-    matrix[1][1]       = near_plane / top;
-    matrix[3][2]       = -1;
-    matrix[2][3]       = -2 * far_plane * near_plane / (far_plane - near_plane);
-    matrix[2][2]       = -(far_plane + near_plane) / (far_plane - near_plane);
-    matrix[3][3]       = 0;
+    matrix[0][0]   = near_plane / right;
+    matrix[1][1]   = near_plane / top;
+    matrix[3][2]   = -1;
+    matrix[2][3]   = (- 2 * far_plane * near_plane) / (far_plane - near_plane);
+    matrix[2][2]   = -(far_plane + near_plane) / (far_plane - near_plane);
+    matrix[3][3]   = 0;
     return matrix;
+}
+
+inline Mat4f PerspectiveAlt(float aspect_ratio, float fovy = 1.0f / 3 * 3.141592, float near_plane = 0.1f,
+                         float far_plane = 10.0f)
+{
+    Mat4f matrix(1.0f);
+    float tan_fovy = std::sin(fovy) / std::cos(fovy);
+    float top      = near_plane * tan_fovy;
+    float right    = aspect_ratio * top;
+
+    matrix[0][0]   = near_plane / right;
+    matrix[1][1]   = near_plane / top;
+    matrix[3][2]   = -1;
+    matrix[2][3]   = (-1* far_plane * near_plane) / (far_plane - near_plane);
+    matrix[2][2]   = -far_plane / (far_plane - near_plane);
+    matrix[3][3]   = 0;
+    return matrix;
+}
+
+template <cNumeric T> 
+std::ostream &operator<<(std::ostream& os, Mat4<T> const& matrix)
+{
+    os << "\nMatrix -> \n";
+    for (int i = 0;i < 4; ++i)
+    {
+        for (int j = 0; j < 4; ++j)
+        {
+            os << '[' << i << ']' << '[' << j << ']' << " -> " << matrix.mat[i][j] << "    |    ";
+        }
+        os << std::endl;
+    }
+    return os;
 }

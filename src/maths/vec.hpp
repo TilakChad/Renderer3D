@@ -238,7 +238,8 @@ template <cNumeric T> struct Vec4
 
     Vec4 PerspectiveDivide() const 
     {
-        return Vec4(x / w, y / w, z / w, w / w);
+        // Don't waste information 
+        return Vec4(x / w, y / w, z / w, 1.0f / w);
     }
     T &operator[](size_t index)
     {

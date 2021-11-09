@@ -51,7 +51,7 @@ void                 RendererMainLoop(Platform *platform)
             /*  }
               else
                   std::cout << "OOOps .. Failed to load the given PNG";*/
-            catTexture = CreateTexture("./src/include/fancy.png");
+            catTexture = CreateTexture("./src/include/checker.png");
             if (!catTexture)
                 std::cout << "Failed to create cat texture..";
             else
@@ -73,6 +73,17 @@ void                 RendererMainLoop(Platform *platform)
                                                .translate(Vec3f(250, 250, 0))
                                                .rotateZ(36.0f / 2.0f)
                                                .translate(Vec3f(-250, -250, 0)));
+
+        // Mat4f transform = PerspectiveAlt(platform->width * 1.0f / platform->height, 0.5f / 3 * 3.141592f, 0.3f);
+        // std::cout << "\nMatrix is : " << transform << std::endl;
+
+        // auto Vc = Vec4f(0.0f, 0.35f, -2.9f, 1.0f);
+        // auto Vb = Vec4f(0.5f, 0.0f, -1.5f, 1.0f);
+        // auto mid = (Vc + Vb) * (1 / 2.0f);
+        // std::cout << "\nMid is : " << mid << std::endl;
+        // std::cout << "\nVC is : " << transform * Vc << std::endl;
+        // std::cout << "\n\nVB is : " << transform * Vb << std::endl;
+        // std::cout << "\nMid transformed is : " << transform * mid << std::endl;
     }
 
     // ClearColor(0x00, 0xFF, 0x00);
@@ -123,9 +134,15 @@ void                 RendererMainLoop(Platform *platform)
         // Pipeline3D::Draw(v0, v1, v2, transform);
     } {
         using namespace Pipeline3D;
-        Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.8f / 3 * 3.141592f, 0.3f)
-                              .translate(Vec3f(0.0f, 0.0f, -1.5f))
-                              .rotateY(time_count);
+        // Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.5f / 3 * 3.141592f,
+        //                              0.3f); //.translate(Vec3f(0.0f, 0.0f, -1.5f));
+        //// .rotateY(time_count);
+        Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.6f / 3 * 3.141592f, 0.3f)
+                              .translate(Vec3f(0.0f, 0.25f, -4.5f))
+                              .rotateX(time_count * 6.0f)
+                              .rotateY(time_count)
+                              .translate(Vec3f(0.0f, -0.5f, -0.5f))
+                              .scale(Vec3f(1.0f, 1.0f, 5.0f));
 
         ClearDepthBuffer();
         VertexAttrib3D c0  = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
@@ -156,7 +173,7 @@ void                 RendererMainLoop(Platform *platform)
         VertexAttrib3D c22 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
         VertexAttrib3D c23 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
 
-        VertexAttrib3D c24 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+        VertexAttrib3D c24 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
         VertexAttrib3D c25 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
         VertexAttrib3D c26 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
         VertexAttrib3D c27 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
@@ -169,6 +186,10 @@ void                 RendererMainLoop(Platform *platform)
         VertexAttrib3D c33 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
         VertexAttrib3D c34 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
         VertexAttrib3D c35 = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+
+        auto z0 = VertexAttrib3D(Vec4f(-0.5f, 0.0f, -1.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(1.0f, 0.0f, 0.0f, 1.0f));
+        auto z1 = VertexAttrib3D(Vec4f(0.5f, 0.0f, -1.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0.0f, 1.0f, 0.0f, 1.0f));
+        auto z2 = VertexAttrib3D(Vec4f(0.0f, 0.35f, -2.9f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0.0f, 0.0f, 1.0f, 1.0f));
 
         Pipeline3D::Draw(c0, c1, c2, transform);
         Pipeline3D::Draw(c3, c4, c5, transform);
@@ -187,6 +208,8 @@ void                 RendererMainLoop(Platform *platform)
 
         Pipeline3D::Draw(c30, c31, c32, transform);
         Pipeline3D::Draw(c33, c34, c35, transform);
+
+        // Pipeline3D::Draw(z0, z1, z2, transform);
     }
     platform->SwapBuffer();
 }
