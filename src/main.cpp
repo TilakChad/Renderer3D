@@ -2,14 +2,19 @@
 #include "./include/rasteriser.h"
 
 #include "./image/PNGLoader.h"
+#include "./include/geometry.hpp"
 #include "./maths/vec.hpp"
 
-static uint32_t      catTexture;
-static uint32_t      fancyTexture;
-static RenderDevice *Device = nullptr;
-static Mat4f         TransformMatrix;
-int32_t              inc = 1;
-void                 RendererMainLoop(Platform *platform)
+static uint32_t                         catTexture;
+static uint32_t                         fancyTexture;
+static RenderDevice *                   Device = nullptr;
+static Mat4f                            TransformMatrix;
+int32_t                                 inc = 1;
+static uint32_t                         importedTexture;
+
+std::vector<Pipeline3D::VertexAttrib3D> GeoVertices;
+
+void                                    RendererMainLoop(Platform *platform)
 {
 
     if (platform->bFirst)
@@ -62,6 +67,12 @@ void                 RendererMainLoop(Platform *platform)
                 std::cout << "Failed to create cat texture..";
             else
                 std::cout << "Successfully created the cat texture..";
+
+            importedTexture = CreateTexture("../Blender/SmartIUV.png");
+            if (!importedTexture)
+                std::cout << "Failed to create imported texture..";
+            else
+                std::cout << "Successfully created the imported texture..";
         }
         Device = GetRasteriserDevice();
         Device->Context.SetRasteriserMode(RenderDevice::RasteriserMode::NONE_CULL);
@@ -84,6 +95,22 @@ void                 RendererMainLoop(Platform *platform)
         // std::cout << "\nVC is : " << transform * Vc << std::endl;
         // std::cout << "\n\nVB is : " << transform * Vb << std::endl;
         // std::cout << "\nMid transformed is : " << transform * mid << std::endl;
+
+        Object3D model("../Blender/spinnerF.obj");
+        for (auto const &vec : model.Vertices)
+            std::cout << vec;
+
+        std::cout << "Vertices read were : " << model.Vertices.size() << std::endl;
+        std::cout << "Texture Co-ordinates read were " << model.TextureCoords.size() << std::endl;
+        std::cout << "Total faces read were : " << model.Faces.size() << std::endl;
+        // Guess its working for now though
+
+        // Function load vertices
+        {
+            GeoVertices.clear();
+            model.LoadGeometry(GeoVertices);
+            std::cout << "Total number of vertices loaded were : " << GeoVertices.size() << std::endl;
+        }
     }
 
     // ClearColor(0x00, 0xFF, 0x00);
@@ -137,79 +164,82 @@ void                 RendererMainLoop(Platform *platform)
         // Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.5f / 3 * 3.141592f,
         //                              0.3f); //.translate(Vec3f(0.0f, 0.0f, -1.5f));
         //// .rotateY(time_count);
-        Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.6f / 3 * 3.141592f, 0.3f)
-                              .translate(Vec3f(0.0f, 0.25f, -4.5f))
-                              .rotateX(time_count * 6.0f)
+        Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f)
+                              .translate(Vec3f(0.0f, 0.15f, -6.5f))
+                              // .rotateX(time_count * 6.0f)
                               .rotateY(time_count)
-                              .translate(Vec3f(0.0f, -0.5f, -0.5f))
-                              .scale(Vec3f(1.0f, 1.0f, 5.0f));
+                              .translate(Vec3f(0.0f, 0.0f, 0.0f))
+                              .scale(Vec3f(0.75f, 0.75f, 0.75f));
 
         ClearDepthBuffer();
-        VertexAttrib3D c0  = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c1  = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c2  = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c3  = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c4  = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c5  = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
+        /* VertexAttrib3D c0  = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c1  = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c2  = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c3  = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c4  = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c5  = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
 
-        VertexAttrib3D c6  = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c7  = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c8  = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c9  = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c10 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c11 = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c6  = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c7  = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c8  = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c9  = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c10 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c11 = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
 
-        VertexAttrib3D c12 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c13 = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c14 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c15 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c16 = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c17 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c12 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c13 = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c14 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c15 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c16 = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c17 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
 
-        VertexAttrib3D c18 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c19 = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c20 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c21 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c22 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c23 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c18 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c19 = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c20 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c21 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c22 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c23 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
 
-        VertexAttrib3D c24 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c25 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c26 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c27 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c28 = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c29 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c24 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c25 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c26 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c27 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c28 = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c29 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
 
-        VertexAttrib3D c30 = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c31 = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-        VertexAttrib3D c32 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c33 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c34 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-        VertexAttrib3D c35 = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c30 = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c31 = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
+         VertexAttrib3D c32 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c33 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c34 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
+         VertexAttrib3D c35 = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
 
-        auto z0 = VertexAttrib3D(Vec4f(-0.5f, 0.0f, -1.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(1.0f, 0.0f, 0.0f, 1.0f));
-        auto z1 = VertexAttrib3D(Vec4f(0.5f, 0.0f, -1.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0.0f, 1.0f, 0.0f, 1.0f));
-        auto z2 = VertexAttrib3D(Vec4f(0.0f, 0.35f, -2.9f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0.0f, 0.0f, 1.0f, 1.0f));
+         auto z0 = VertexAttrib3D(Vec4f(-0.5f, 0.0f, -1.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(1.0f, 0.0f, 0.0f, 1.0f));
+         auto z1 = VertexAttrib3D(Vec4f(0.5f, 0.0f, -1.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0.0f, 1.0f, 0.0f, 1.0f));
+         auto z2 = VertexAttrib3D(Vec4f(0.0f, 0.35f, -2.9f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0.0f, 0.0f, 1.0f, 1.0f));
 
-        Pipeline3D::Draw(c0, c1, c2, transform);
-        Pipeline3D::Draw(c3, c4, c5, transform);
+         Pipeline3D::Draw(c0, c1, c2, transform);
+         Pipeline3D::Draw(c3, c4, c5, transform);
 
-        Pipeline3D::Draw(c6, c7, c8, transform);
-        Pipeline3D::Draw(c9, c10, c11, transform);
+         Pipeline3D::Draw(c6, c7, c8, transform);
+         Pipeline3D::Draw(c9, c10, c11, transform);
 
-        Pipeline3D::Draw(c12, c13, c14, transform);
-        Pipeline3D::Draw(c15, c16, c17, transform);
+         Pipeline3D::Draw(c12, c13, c14, transform);
+         Pipeline3D::Draw(c15, c16, c17, transform);
 
-        Pipeline3D::Draw(c18, c19, c20, transform);
-        Pipeline3D::Draw(c21, c22, c23, transform);
+         Pipeline3D::Draw(c18, c19, c20, transform);
+         Pipeline3D::Draw(c21, c22, c23, transform);
 
-        Pipeline3D::Draw(c24, c25, c26, transform);
-        Pipeline3D::Draw(c27, c28, c29, transform);
+         Pipeline3D::Draw(c24, c25, c26, transform);
+         Pipeline3D::Draw(c27, c28, c29, transform);
 
-        Pipeline3D::Draw(c30, c31, c32, transform);
-        Pipeline3D::Draw(c33, c34, c35, transform);
+         Pipeline3D::Draw(c30, c31, c32, transform);
+         Pipeline3D::Draw(c33, c34, c35, transform);*/
 
+        SetActiveTexture(importedTexture);
         // Pipeline3D::Draw(z0, z1, z2, transform);
+        for (int i = 0; i < GeoVertices.size(); i += 3)
+            Pipeline3D::Draw(GeoVertices.at(i), GeoVertices.at(i + 1), GeoVertices.at(i + 2), transform);
     }
     platform->SwapBuffer();
 }
