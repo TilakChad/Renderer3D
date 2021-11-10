@@ -665,12 +665,12 @@ void Rasteriser(int32_t x0, int32_t y0, float z0, float inv_w0, int32_t x1, int3
                     (a1 <= 0 && a2 <= 0 && a3 <= 0)) // --> Turns on rasterization of //  anti clockwise triangles
                 {
 
-                    l1      = static_cast<float>(a2) / area;
-                    l2      = static_cast<float>(a3) / area;
-                    l3      = static_cast<float>(a1) / area;
+                    l1 = static_cast<float>(a2) / area;
+                    l2 = static_cast<float>(a3) / area;
+                    l3 = static_cast<float>(a1) / area;
 
-                    float z = l1 * z0 + l2 * z1 + l3 * z2;
                     // Z is interpolated linearly in this space, due to perspective division that already occured
+                    float z     = l1 * z0 + l2 * z1 + l3 * z2;
 
                     l1          = l1 * inv_w0;
                     l2          = l2 * inv_w1;
@@ -683,11 +683,17 @@ void Rasteriser(int32_t x0, int32_t y0, float z0, float inv_w0, int32_t x1, int3
                     {
                         // auto uv = l1 * texA + l2 * texB + l3 * texC;
                         // Interpolate the depth perspective correctly
-                        auto rgb = texture.Sample(Vec2(uv), Texture::Interpolation::NEAREST);
+                        // auto rgb = texture.Sample(Vec2(uv), Texture::Interpolation::NEAREST);
                         depth    = z;
-                        mem[0]   = rgb.z;
-                        mem[1]   = rgb.y;
-                        mem[2]   = rgb.x;
+
+                        //mem[0]   = rgb.z;
+                        //mem[1]   = rgb.y;
+                        //mem[2]   = rgb.x;
+                        //mem[3]   = 0x00; 
+                        //
+                        mem[0]   = z * 255;
+                        mem[1]   = z * 255;
+                        mem[2]   = z * 255;
                         mem[3]   = 0x00;
                     }
                 }
@@ -839,7 +845,10 @@ void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
     }
 
     if (outVertices.size() < 3)
+    {
+        __debugbreak();
         return;
+    }
 
     for (int vertex = 1; vertex < outVertices.size() - 1; vertex += 1)
     {
@@ -858,15 +867,15 @@ void Clip3D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
         return;
     // Triangle fully rejected
     // Check for right and left boundary
-    if (v1.Position.x < -v0.Position.w && v1.Position.x < -v1.Position.w && v2.Position.x < -v2.Position.w)
+    if (v0.Position.x < -v0.Position.w && v1.Position.x < -v1.Position.w && v2.Position.x < -v2.Position.w)
         return;
-    if (v1.Position.x > v0.Position.w && v1.Position.x > v1.Position.w && v2.Position.x > v2.Position.w)
+    if (v0.Position.x > v0.Position.w && v1.Position.x > v1.Position.w && v2.Position.x > v2.Position.w)
         return;
-    if (v1.Position.y < -v0.Position.w && v1.Position.y < -v1.Position.w && v2.Position.y < -v2.Position.w)
+    if (v0.Position.y < -v0.Position.w && v1.Position.y < -v1.Position.w && v2.Position.y < -v2.Position.w)
         return;
-    if (v1.Position.y > v0.Position.w && v1.Position.y > v1.Position.w && v2.Position.y > v2.Position.w)
+    if (v0.Position.y > v0.Position.w && v1.Position.y > v1.Position.w && v2.Position.y > v2.Position.w)
         return;
-    if (v1.Position.z > v0.Position.w && v1.Position.z > v1.Position.w && v2.Position.z > v2.Position.w)
+    if (v0.Position.z > v0.Position.w && v1.Position.z > v1.Position.w && v2.Position.z > v2.Position.w)
         return;
     if (v0.Position.z < 0 && v1.Position.z < 0 && v2.Position.z < 0)
         return;
