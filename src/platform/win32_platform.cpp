@@ -8,8 +8,50 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 static Platform         win32Platform; // --> Exposed to other translation units
 static Win32Window      win32;         // --> Used internally for win32 application only
 
-void                    SwapBuffers(void)
+static void             ToggleFullScreen(HWND hwnd)
 {
+    DWORD dwStyle = GetWindowLongPtr(hwnd, GWL_STYLE);
+    if (dwStyle & WS_OVERLAPPEDWINDOW)
+    {
+        MONITORINFO mInfo = {sizeof(MONITORINFO)};
+        if (GetWindowPlacement(hwnd, &win32.wPlacement) &&
+            GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY), &mInfo))
+        {
+            SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle & ~WS_OVERLAPPEDWINDOW);
+            auto width  = mInfo.rcMonitor.right - mInfo.rcMonitor.left;
+            auto height = mInfo.rcMonitor.bottom - mInfo.rcMonitor.top;
+            SetWindowPos(hwnd, HWND_TOP, mInfo.rcMonitor.left, mInfo.rcMonitor.top, width, height,
+                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+        }
+    }
+    else
+    {
+        // Restore the window to its previous position 
+        SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle | WS_OVERLAPPEDWINDOW);
+        SetWindowPlacement(hwnd, &win32.wPlacement);
+        SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+}
+
+static void SetWindowOpacity(HWND hwnd, float opacity)
+{
+    if (opacity < 1.0f)
+    {
+        const BYTE alpha = (BYTE)(255 * opacity);
+        DWORD      style = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtr(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED);
+        SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
+    }
+}
+
+static void SetOpacity(float opacity)
+{
+    SetWindowOpacity(win32.handle, opacity);
+}
+
+void SwapBuffers(void)
+    {
     HDC hdc = GetDC(win32.handle);
     StretchDIBits(hdc, 0, 0, win32Platform.width, win32Platform.height, 0, 0, win32Platform.width, win32Platform.height,
                   win32.renderBuffer.colorBuffer, &win32.renderBuffer.bmpInfo, DIB_RGB_COLORS, SRCCOPY);
@@ -60,13 +102,13 @@ void ResizeWritableBitmap(uint32_t width, uint32_t height)
     win32Platform.colorBuffer.buffer     = win32.renderBuffer.colorBuffer;
 
     if (win32Platform.zBuffer.buffer)
-        VirtualFree(win32Platform.zBuffer.buffer,0,MEM_RELEASE);
+        VirtualFree(win32Platform.zBuffer.buffer, 0, MEM_RELEASE);
 
     uint32_t zMemorySize = width * height * sizeof(float);
     win32Platform.zBuffer.buffer =
         (float *)VirtualAlloc(nullptr, width * height * sizeof(float), MEM_COMMIT, PAGE_READWRITE);
-    win32Platform.zBuffer.width = width; 
-    win32Platform.zBuffer.height = height; 
+    win32Platform.zBuffer.width  = width;
+    win32Platform.zBuffer.height = height;
 
     assert(win32.renderBuffer.colorBuffer != nullptr);
     assert(win32Platform.zBuffer.buffer);
@@ -105,6 +147,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR CmdLine
     QueryPerformanceFrequency(&win32.timer.frequency);
 
     win32Platform.SwapBuffer = SwapBuffers;
+    win32Platform.SetOpacity = SetOpacity;
 
     int     frames_count     = 0;
     float32 time_elapsed     = 0.0f;
@@ -192,11 +235,25 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     case WM_MOUSEWHEEL:
     {
-        win32Platform.Mouse.bMouseScrolled = true; 
-        win32Platform.bFirst               = true; 
+        win32Platform.Mouse.bMouseScrolled = true;
+        win32Platform.bFirst               = true;
         win32Platform.Mouse.value          = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
         break;
     }
+    case WM_KEYDOWN:
+    case WM_KEYUP:
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+    {
+        const int action   = HIWORD(lParam) & KF_UP; // <-- If action is 1, key is released else pressed
+        int       scancode = (HIWORD(lParam) & (KF_EXTENDED | 0xFF));
+        if (wParam == VK_RETURN && (HIWORD(lParam) & KF_ALTDOWN) && action)
+        {
+            ToggleFullScreen(hwnd);
+        }
+        break;
+    }
+
     default:
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }

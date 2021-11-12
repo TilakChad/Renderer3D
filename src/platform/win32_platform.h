@@ -41,5 +41,7 @@ struct Win32Window
         LARGE_INTEGER frequency;
         LARGE_INTEGER counter;
     } timer;
+
+    WINDOWPLACEMENT wPlacement = {sizeof(WINDOWPLACEMENT)};
 };
 

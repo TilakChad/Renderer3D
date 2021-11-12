@@ -7,6 +7,7 @@ using float64 = double;
 
 struct Platform;
 typedef void (*SwapBufferFn)(void);
+typedef void (*OpacityFn)(float);
 
 struct Platform
 {
@@ -32,6 +33,7 @@ struct Platform
     } zBuffer;
 
     SwapBufferFn SwapBuffer;
+    OpacityFn    SetOpacity;
     bool         bFirst = true;
     struct
     {
