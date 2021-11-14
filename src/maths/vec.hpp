@@ -133,7 +133,7 @@ template <cNumeric T> struct Vec3
         return Vec3(x * vec.x, y * vec.y, z * vec.z);
     }
 
-    constexpr T norm() const
+    constexpr float norm() const
     {
         return std::sqrt(x * x + y * y + z * z);
     }
@@ -142,6 +142,13 @@ template <cNumeric T> struct Vec3
         return x * x + y * y + z * z;
     }
 
+    constexpr Vec3 unit() const 
+    {
+        float mag = norm(); 
+        if (mag == 0)
+            return Vec3(); 
+        return Vec3(x / mag, y / mag, z / mag);
+    }
     template <cNumeric U> constexpr auto operator*(U scalar) const -> Vec3<decltype(scalar * x)>
     {
         return Vec3<decltype(scalar * x)>(x * scalar, y * scalar, z * scalar);
@@ -150,6 +157,20 @@ template <cNumeric T> struct Vec3
     constexpr Vec3 operator/(T scalar)
     {
         return Vec3(x / scalar, y / scalar, z / scalar);
+    }
+
+    constexpr static Vec3 Cross(Vec3 const& vec1, Vec3 const& vec2)
+    {
+        Vec3 res; 
+        res.x = vec1.y * vec2.z - vec1.z * vec2.y; 
+        res.y = vec1.z * vec2.x - vec1.x * vec2.z; 
+        res.z = vec1.x * vec2.y - vec1.y * vec2.x; 
+        return res;
+    }
+
+    constexpr static T Dot(Vec3 const &vec1, Vec3 const &vec2)
+    {
+        return vec1.x * vec2.x + vec1.y * vec2.y + vec1.z * vec2.z;
     }
 };
 
@@ -164,6 +185,11 @@ template <cNumeric T, cNumeric U> inline constexpr auto operator*(U scalar, cons
 template <cNumeric T> inline constexpr Vec3<T> Vec2<T>::Cross(const Vec2<T> &vec1, const Vec2<T> &vec2)
 {
     return Vec3(T{}, T{}, vec1.x * vec2.y - vec2.x * vec1.y);
+}
+
+template <cNumeric T> std::ostream &operator<<(std::ostream &os, Vec3<T> vec)
+{
+    return os << "Vec3() : x -> " << vec.x << ", y -> " << vec.y << ", z -> " << vec.z << std::endl;
 }
 
 template <cNumeric T>
