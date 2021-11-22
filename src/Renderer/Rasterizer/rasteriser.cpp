@@ -846,7 +846,6 @@ void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
 
     if (outVertices.size() < 3)
     {
-        __debugbreak();
         return;
     }
 

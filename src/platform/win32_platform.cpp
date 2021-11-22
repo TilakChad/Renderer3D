@@ -1,5 +1,6 @@
 #pragma once
 #include "win32_platform.h"
+#include <windowsx.h>
 
 #include <sstream>
 
@@ -8,7 +9,12 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 static Platform         win32Platform; // --> Exposed to other translation units
 static Win32Window      win32;         // --> Used internally for win32 application only
 
-static void             ToggleFullScreen(HWND hwnd)
+bool                    isKeyPressed(Keys key)
+{
+    return win32Platform.Keyboard.keymaps[(int32_t)key];
+}
+
+static void ToggleFullScreen(HWND hwnd)
 {
     DWORD dwStyle = GetWindowLongPtr(hwnd, GWL_STYLE);
     if (dwStyle & WS_OVERLAPPEDWINDOW)
@@ -26,12 +32,46 @@ static void             ToggleFullScreen(HWND hwnd)
     }
     else
     {
-        // Restore the window to its previous position 
+        // Restore the window to its previous position
         SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle | WS_OVERLAPPEDWINDOW);
         SetWindowPlacement(hwnd, &win32.wPlacement);
         SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
     }
+}
+
+static void MapKeyboardKeys()
+{
+    using enum Keys;
+    for (int i = 0; i < 512; ++i)
+        win32Platform.Keyboard.keycodes[i] = 127;
+
+    win32Platform.Keyboard.keycodes[(int16_t)'A'] = (int32_t)A;
+    win32Platform.Keyboard.keycodes[(int16_t)'B'] = (int32_t)B;
+    win32Platform.Keyboard.keycodes[(int16_t)'C'] = (int32_t)C;
+    win32Platform.Keyboard.keycodes[(int16_t)'D'] = (int32_t)D;
+    win32Platform.Keyboard.keycodes[(int16_t)'E'] = (int32_t)E;
+    win32Platform.Keyboard.keycodes[(int16_t)'F'] = (int32_t)F;
+    win32Platform.Keyboard.keycodes[(int16_t)'G'] = (int32_t)G;
+    win32Platform.Keyboard.keycodes[(int16_t)'H'] = (int32_t)H;
+    win32Platform.Keyboard.keycodes[(int16_t)'I'] = (int32_t)I;
+    win32Platform.Keyboard.keycodes[(int16_t)'J'] = (int32_t)J;
+    win32Platform.Keyboard.keycodes[(int16_t)'K'] = (int32_t)K;
+    win32Platform.Keyboard.keycodes[(int16_t)'L'] = (int32_t)L;
+    win32Platform.Keyboard.keycodes[(int16_t)'M'] = (int32_t)M;
+    win32Platform.Keyboard.keycodes[(int16_t)'N'] = (int32_t)N;
+    win32Platform.Keyboard.keycodes[(int16_t)'O'] = (int32_t)O;
+    win32Platform.Keyboard.keycodes[(int16_t)'P'] = (int32_t)P;
+    win32Platform.Keyboard.keycodes[(int16_t)'Q'] = (int32_t)Q;
+    win32Platform.Keyboard.keycodes[(int16_t)'R'] = (int32_t)R;
+    win32Platform.Keyboard.keycodes[(int16_t)'S'] = (int32_t)S;
+    win32Platform.Keyboard.keycodes[(int16_t)'T'] = (int32_t)T;
+    win32Platform.Keyboard.keycodes[(int16_t)'U'] = (int32_t)U;
+    win32Platform.Keyboard.keycodes[(int16_t)'V'] = (int32_t)V;
+    win32Platform.Keyboard.keycodes[(int16_t)'W'] = (int32_t)W;
+    win32Platform.Keyboard.keycodes[(int16_t)'X'] = (int32_t)X;
+    win32Platform.Keyboard.keycodes[(int16_t)'Y'] = (int32_t)Y;
+    win32Platform.Keyboard.keycodes[(int16_t)'Z'] = (int32_t)Z;
 }
 
 static void SetWindowOpacity(HWND hwnd, float opacity)
@@ -51,7 +91,7 @@ static void SetOpacity(float opacity)
 }
 
 void SwapBuffers(void)
-    {
+{
     HDC hdc = GetDC(win32.handle);
     StretchDIBits(hdc, 0, 0, win32Platform.width, win32Platform.height, 0, 0, win32Platform.width, win32Platform.height,
                   win32.renderBuffer.colorBuffer, &win32.renderBuffer.bmpInfo, DIB_RGB_COLORS, SRCCOPY);
@@ -137,24 +177,38 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR CmdLine
 #endif
     // We ain't handling anything input related for now
 
-    win32.handle = CreateWindowEx(WS_EX_APPWINDOW, RENDERER_WIN32_CLASS_NAME, L"Rasterize and Raytracer",
-                                  WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL,
-                                  NULL, GetModuleHandle(NULL), nullptr);
+    win32.handle =
+        CreateWindowEx(WS_EX_APPWINDOW, RENDERER_WIN32_CLASS_NAME, L"Rasterize and Raytracer", WS_OVERLAPPEDWINDOW,
+                       CW_USEDEFAULT, CW_USEDEFAULT, 640, 480, NULL, NULL, GetModuleHandle(NULL), nullptr);
     ShowWindow(win32.handle, SW_SHOWNA);
 
     // Platform initialization
     QueryPerformanceCounter(&win32.timer.counter);
     QueryPerformanceFrequency(&win32.timer.frequency);
 
-    win32Platform.SwapBuffer = SwapBuffers;
-    win32Platform.SetOpacity = SetOpacity;
+    win32Platform.SwapBuffer  = SwapBuffers;
+    win32Platform.SetOpacity  = SetOpacity;
+    win32Platform.bKeyPressed = isKeyPressed;
+    MapKeyboardKeys();
 
-    int     frames_count     = 0;
-    float32 time_elapsed     = 0.0f;
+    // Lets register a new raw input device for unlimited mouse movement
+    RAWINPUTDEVICE rawMouse{};
+    rawMouse.usUsagePage = 0x01;
+    rawMouse.usUsage     = 0x02;
+    rawMouse.hwndTarget  = win32.handle;
+
+    if (!RegisterRawInputDevices(&rawMouse, 1, sizeof(rawMouse)))
+    {
+        MessageBox(win32.handle, L"Failed to register raw input", L"Nothing much", MB_OK);
+    }
+
+    int     frames_count = 0;
+    float32 time_elapsed = 0.0f;
 
     MSG     msg{};
     while (msg.message != WM_QUIT)
     {
+        ZeroMemory(win32Platform.Keyboard.keymaps, sizeof(win32Platform.Keyboard.keymaps));
         if (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
         {
             TranslateMessage(&msg);
@@ -192,6 +246,9 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_NCCREATE:
     {
         CreateWritableBitmap(win32Platform.height, win32Platform.height);
+        SetCursorPos(300, 300);
+        win32Platform.Mouse.xpos = 300;
+        win32Platform.Mouse.ypos = 300;
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 
@@ -231,6 +288,8 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     case WM_MOUSEMOVE:
     {
+       /* win32Platform.Mouse.xpos = GET_X_LPARAM(lParam);
+        win32Platform.Mouse.ypos = GET_Y_LPARAM(lParam);*/
         break;
     }
     case WM_MOUSEWHEEL:
@@ -251,9 +310,40 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
             ToggleFullScreen(hwnd);
         }
+        win32Platform.Keyboard.keymaps[win32Platform.Keyboard.keycodes[wParam]] = 1;
         break;
     }
 
+    case WM_INPUT:
+    {
+        // For raw input
+        UINT      size = 0;
+        HRAWINPUT ri   = (HRAWINPUT)lParam;
+        RAWINPUT *data = nullptr;
+        int32_t   dx, dy;
+        GetRawInputData(ri, RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER));
+        auto lpb = new BYTE[size];
+        if (!lpb)
+            break;
+        if (GetRawInputData(ri, RID_INPUT, lpb, &size, sizeof(RAWINPUTHEADER)) != size)
+            OutputDebugString(L"GetRawInputData doesn't return correct size");
+
+        data = (RAWINPUT *)lpb;
+        if (data->data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)
+        {
+            dx = data->data.mouse.lLastX - win32Platform.Mouse.xpos;
+            dy = data->data.mouse.lLastY - win32Platform.Mouse.ypos;
+        }
+        else
+        {
+            dx = data->data.mouse.lLastX;
+            dy = data->data.mouse.lLastY;
+        }
+        win32Platform.Mouse.xpos += dx; 
+        win32Platform.Mouse.ypos += dy; 
+        delete[] lpb;
+        break;
+    }
     default:
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
