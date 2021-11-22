@@ -6,6 +6,8 @@
 #include "./include/geometry.hpp"
 #include "./maths/vec.hpp"
 
+#include <fstream>
+
 static uint32_t                         catTexture;
 static uint32_t                         fancyTexture;
 static RenderDevice *                   Device = nullptr;
@@ -14,58 +16,63 @@ int32_t                                 inc = 1;
 static uint32_t                         importedTexture;
 
 std::vector<Pipeline3D::VertexAttrib3D> GeoVertices;
+std::vector<uint32_t>                   GeoVerticesIndex;
 
-// TODO : Add Transparency 
-// TODO : Add FullScreen Mode 
-// Both easy easy 
-// --> Done.. didn't take much... just some copy paste stuffs
+// Leave ray tracer for now and continue on rasteriser for sometime
+// TODO : fragment shader emulation
 
-void                                    RendererMainLoop(Platform *platform)
+Vec3f   cameraPosition = Vec3f();
+float   yaw            = 0;
+float   pitch          = 0;
+int32_t xPos, yPos;
+
+Vec3f   getFrontVector(Platform *platform)
+{
+    auto            delta_xPos     = platform->Mouse.xpos - xPos;
+    auto            delta_yPos     = platform->Mouse.ypos - yPos;
+
+    constexpr float angle_constant = 1.0f / 500;
+    pitch                          = pitch - delta_yPos * angle_constant;
+    yaw                            = yaw + delta_xPos * angle_constant;
+
+    if (pitch > 1.55334f)
+        pitch = 1.55334f;
+    else if (pitch < -1.55334f)
+        pitch = -1.55334f;
+
+    auto frontVector = Vec3f();
+    frontVector.x    = std::sin(yaw) * std::cos(pitch);
+    frontVector.y    = std::sin(pitch);
+    frontVector.z    = std::cos(pitch) * -std::cos(yaw);
+
+    xPos             = platform->Mouse.xpos;
+    yPos             = platform->Mouse.ypos;
+
+    // std::cout << "Delta xpos and ypos are : " << delta_xPos << " " << delta_yPos << std::endl;
+    constexpr float move_constant = 5.0f;
+    auto            fVector       = frontVector.unit();
+
+    if (platform->bKeyPressed(Keys::W))
+        cameraPosition = cameraPosition + move_constant * platform->deltaTime * fVector;
+    else if (platform->bKeyPressed(Keys::S))
+        cameraPosition = cameraPosition - move_constant * platform->deltaTime * fVector;
+    return fVector;
+}
+
+void RendererMainLoop(Platform *platform)
 {
 
     if (platform->bFirst)
     {
-        ClearColor(0xB0, 0xB0, 0xB0);
+        ClearColor(0x87, 0xCE, 0xEB);
         // Initialize the rendering device
 
         platform->bFirst = false;
         { // Rasterisation
             {
-
                 static uint32_t target_height = 64;
                 float           aspect_ratio  = 1;
-                // static uint32_t target_width  = 64;
-                // if (platform->Mouse.bMouseScrolled)
-                //{
-                //    target_width                   = (target_width + platform->Mouse.value * 8) / aspect_ratio;
-                //    target_height                  = target_height + platform->Mouse.value * 8;
-                //    platform->Mouse.bMouseScrolled = false;
-                //}
-                // uint32_t height, width, no_channels, bit_depth;
-                // uint8_t *png = LoadPNGFromFile("./src/include/fancy.png", &height, &width, &no_channels, &bit_depth);
-                // if (png)
-                //{
-                //    std::cout << "\nPNG loading successful with info : \n Width -> " << width << "\nHeight -> " <<
-                //    height
-                //              << "\nNo. of channels -> " << no_channels << "\nBit depth -> " << bit_depth <<
-                //              std::endl;
-                //    // DrawImage("./src/include/cat.png", platform->colorBuffer.buffer, platform->colorBuffer.width,
-                //    //          platform->colorBuffer.height, platform->colorBuffer.noChannels);
-                //    // free(png);
-                //    catTexture = CreateTexture("./src/include/fancy.png");
-                //    SetActiveTexture(catTexture);
-                //    auto     texture  = GetActiveTexture();
-                //    uint8_t *gaussian = texture.Convolve(Texture::Convolution::EdgeDetection);
-                //    ImageViewer(gaussian, platform->colorBuffer.buffer, width, height, no_channels,
-                //    platform->colorBuffer.width,
-                //                platform->colorBuffer.height, platform->colorBuffer.noChannels, target_width,
-                //                target_height);
-                //    free(png);
-                //    free(gaussian);
-                /*  }
-                  else
-                      std::cout << "OOOps .. Failed to load the given PNG";*/
-                catTexture = CreateTexture("./src/include/checker.png");
+                catTexture                    = CreateTexture("./src/include/checker.png");
                 if (!catTexture)
                     std::cout << "Failed to create cat texture..";
                 else
@@ -94,20 +101,9 @@ void                                    RendererMainLoop(Platform *platform)
                                                    .rotateZ(36.0f / 2.0f)
                                                    .translate(Vec3f(-250, -250, 0)));
 
-            // Mat4f transform = PerspectiveAlt(platform->width * 1.0f / platform->height, 0.5f / 3 * 3.141592f, 0.3f);
-            // std::cout << "\nMatrix is : " << transform << std::endl;
-
-            // auto Vc = Vec4f(0.0f, 0.35f, -2.9f, 1.0f);
-            // auto Vb = Vec4f(0.5f, 0.0f, -1.5f, 1.0f);
-            // auto mid = (Vc + Vb) * (1 / 2.0f);
-            // std::cout << "\nMid is : " << mid << std::endl;
-            // std::cout << "\nVC is : " << transform * Vc << std::endl;
-            // std::cout << "\n\nVB is : " << transform * Vb << std::endl;
-            // std::cout << "\nMid transformed is : " << transform * mid << std::endl;
-
             Object3D model("../Blender/spinnerF.obj");
-            for (auto const &vec : model.Vertices)
-                std::cout << vec;
+            /*  for (auto const &vec : model.Vertices)
+                  std::cout << vec;*/
 
             std::cout << "Vertices read were : " << model.Vertices.size() << std::endl;
             std::cout << "Texture Co-ordinates read were " << model.TextureCoords.size() << std::endl;
@@ -117,156 +113,38 @@ void                                    RendererMainLoop(Platform *platform)
             // Function load vertices
             {
                 GeoVertices.clear();
-                model.LoadGeometry(GeoVertices);
+                GeoVerticesIndex.clear();
+                model.LoadGeometry(GeoVertices, GeoVerticesIndex);
                 std::cout << "Total number of vertices loaded were : " << GeoVertices.size() << std::endl;
+                std::cout << "Total number of indices loaded were : " << GeoVerticesIndex.size() << std::endl;
             }
-            platform->SetOpacity(0.55f);
-        } // End Rasterisation 
-        
+            platform->SetOpacity(1.0f);
+        } // End Rasterisation
+        if (0)
         {
-            // Begin Ray Tracing 
-            Vec3f v0 = Vec3f(5.5f, 5.5f, -0.5f); 
-            Vec3f v1 = Vec3f(-5.5f, 5.5f, -0.5f); 
-            Vec3f v2 = Vec3f(-5.5f, -5.5f, -0.5f);
-            RayTracer::RenderTriangle(v0, v1, v2);
+            // Begin Ray Tracing
         }
-    } 
-    if (0)
+    }
+    if (1)
     {
         // Rasterisation
         // ClearColor(0x00, 0xFF, 0x00);
         FastClearColor(0xC0, 0xC0, 0xC0, 0xC0);
-        /*float          aspect_ratio = platform->width * 1.0f / platform->height;
-        Pipeline2D::VertexAttrib2D v0           = {Vec2f(-0.5f, -0.5f), Vec2f(0.35, 0.35), Vec4f(1.0f, 0.0f, 0.0f,
-        0.25f)}; Pipeline2D::VertexAttrib2D v1           = {Vec2f(0.5f, 0.5f), Vec2f(0.35, 0.65), Vec4f(1.0f, 0.0f,
-        0.0f, 0.5f)}; Pipeline2D::VertexAttrib2D v2           = {Vec2f(0.0f, 1.5f), Vec2f(0.65, 0.65), Vec4f(1.0f, 0.0f,
-        0.0f, 0.75f)}; Pipeline2D::VertexAttrib2D v3           = {Vec2f(1.0f / aspect_ratio, -1.0f), Vec2f(0.65, 0.35),
-        Vec4f(1.0f, 0.0f, 0.0f, 1.0f)};*/
-
         SetActiveTexture(catTexture);
-        // ClipSpace(v0, v1, v2);
-        // SetActiveTexture(fancyTexture);
-        // ClipSpace(v0, v2, v3);
-        // Device->Draw(v0, v1);
-        // Device->Draw(v0, v1, v2);
-
-        static float time_count = 0;
-        time_count += inc * platform->deltaTime;
-        //// Vertex Transform
-        Pipeline2D::VertexAttrib2D v0 = {Vec2f(100, 100), Vec2f(0.35, 0.35), Vec4f(1.0f, 0.0f, 0.0f, 0.1f)};
-        Pipeline2D::VertexAttrib2D v1 = {Vec2f(100, 400), Vec2f(0.35, 0.65), Vec4f(0.0f, 1.0f, 0.0f, 0.5f)};
-        Pipeline2D::VertexAttrib2D v2 = {Vec2f(800, 400), Vec2f(0.65, 0.65), Vec4f(0.0f, 0.0f, 1.0f, 0.75f)};
-        Pipeline2D::VertexAttrib2D v3 = {Vec2f(400, 100), Vec2f(0.65, 0.35), Vec4f(1.0f, 1.0f, 0.0f, 1.0f)};
-
-        // Mat4f          TransformMatrix = orthoProjection(0, platform->width, 0, platform->height, 0.0f, 1.0f);
-
-        // Device->Context.SetTransformMatrix(TransformMatrix.translate(Vec3f(250, 0, 0))
-        //                                       .translate(Vec3f(250, 250, 0))
-        //                                       .rotateZ(time_count / 2.0f)
-        //                                       .translate(Vec3f(-250, -250, 0)));
-        // SetActiveTexture(catTexture);
-        // Device->Draw(v0, v1, v2);
-        // SetActiveTexture(fancyTexture);
-        // if (time_count > 9.0f)
-        //    inc = -1;
-        // if (time_count < 0.3f)
-        //    inc = 1;
-        // Device->Draw(v0, v2, v3);
-        {
-            // 3D pipeline check stuffs
-            // Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 1.0 / 3 * 3.141592f, 0.3f)
-            //                      .translate(Vec3f(0.0f, 0.0f, -time_count));
-            // Pipeline3D::VertexAttrib3D v0 = {Vec4f(-0.5f, -0.5f, 0.0f, 1.0f), Vec2f(0), Vec4f(1.0f, 0.0f,
-            // 0.0f, 1.0f)}; Pipeline3D::VertexAttrib3D v1 = {Vec4f(0.5f, -0.5f, 0.0f, 1.0f), Vec2f(0),
-            // Vec4f(0.0f, 1.0f, 0.0f, 1.0f)}; Pipeline3D::VertexAttrib3D v2 = {Vec4f(0.5f, 0.5f, 0.0f, 1.0f), Vec2f(0),
-            // Vec4f(0.0f, 0.0f, 1.0f, 1.0f)}; Pipeline3D::Draw(v0, v1, v2, transform);
-        } {
-            using namespace Pipeline3D;
-            // Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.5f / 3 * 3.141592f,
-            //                              0.3f); //.translate(Vec3f(0.0f, 0.0f, -1.5f));
-            //// .rotateY(time_count);
-            Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f)
-                                  .translate(Vec3f(0.0f, 0.15f, -6.5f))
-                                  .rotateX(time_count * 6.0f)
-                                  .rotateY(time_count)
-                                  .translate(Vec3f(0.0f, 0.0f, 0.0f))
-                                  .scale(Vec3f(0.75f, 0.75f, 0.75f));
-
-            ClearDepthBuffer();
-            /* VertexAttrib3D c0  = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c1  = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c2  = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c3  = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c4  = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c5  = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-
-             VertexAttrib3D c6  = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c7  = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c8  = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c9  = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c10 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c11 = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-
-             VertexAttrib3D c12 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c13 = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c14 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c15 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c16 = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c17 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-
-             VertexAttrib3D c18 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c19 = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c20 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c21 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c22 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c23 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-
-             VertexAttrib3D c24 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c25 = {Vec4f(0.5f, -0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c26 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c27 = {Vec4f(0.5f, -0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c28 = {Vec4f(-0.5f, -0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c29 = {Vec4f(-0.5f, -0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-
-             VertexAttrib3D c30 = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c31 = {Vec4f(0.5f, 0.5f, -0.5f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0)};
-             VertexAttrib3D c32 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c33 = {Vec4f(0.5f, 0.5f, 0.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c34 = {Vec4f(-0.5f, 0.5f, 0.5f, 1.0f), Vec2f(0.0f, 0.0f), Vec4f(0)};
-             VertexAttrib3D c35 = {Vec4f(-0.5f, 0.5f, -0.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(0)};
-
-             auto z0 = VertexAttrib3D(Vec4f(-0.5f, 0.0f, -1.5f, 1.0f), Vec2f(0.0f, 1.0f), Vec4f(1.0f, 0.0f,
-             0.0f, 1.0f)); auto z1 = VertexAttrib3D(Vec4f(0.5f, 0.0f, -1.5f, 1.0f), Vec2f(1.0f, 0.0f), Vec4f(0.0f, 1.0f,
-             0.0f, 1.0f)); auto z2 = VertexAttrib3D(Vec4f(0.0f, 0.35f, -2.9f, 1.0f), Vec2f(1.0f, 1.0f), Vec4f(0.0f,
-             0.0f, 1.0f, 1.0f));
-
-             Pipeline3D::Draw(c0, c1, c2, transform);
-             Pipeline3D::Draw(c3, c4, c5, transform);
-
-             Pipeline3D::Draw(c6, c7, c8, transform);
-             Pipeline3D::Draw(c9, c10, c11, transform);
-
-             Pipeline3D::Draw(c12, c13, c14, transform);
-             Pipeline3D::Draw(c15, c16, c17, transform);
-
-             Pipeline3D::Draw(c18, c19, c20, transform);
-             Pipeline3D::Draw(c21, c22, c23, transform);
-
-             Pipeline3D::Draw(c24, c25, c26, transform);
-             Pipeline3D::Draw(c27, c28, c29, transform);
-
-             Pipeline3D::Draw(c30, c31, c32, transform);
-             Pipeline3D::Draw(c33, c34, c35, transform);*/
-
-            SetActiveTexture(importedTexture);
-            // Pipeline3D::Draw(z0, z1, z2, transform);
-            for (int i = 0; i < GeoVertices.size(); i += 3)
-                Pipeline3D::Draw(GeoVertices.at(i), GeoVertices.at(i + 1), GeoVertices.at(i + 2), transform);
-        }
     }
     {
-    // Ray tracing begins here 
+        using namespace Pipeline3D;
+        Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f);
+        auto  model     = Mat4f(1.0f)
+                              .translate(Vec3f(0.0f, 0.15f, -6.5f))
+                              .translate(Vec3f(0.0f, 0.0f, 0.0f))
+                              .scale(Vec3f(0.75f, 0.75f, 0.75f));
 
+        ClearDepthBuffer();
+        auto lookMatrix =
+            lookAtMatrix(cameraPosition, cameraPosition + getFrontVector(platform), Vec3f(0.0f, 1.0f, 0.0f));
+        transform = transform * lookMatrix * model;
+        Pipeline3D::Draw(GeoVertices, GeoVerticesIndex, transform);
     }
     platform->SwapBuffer();
 }
