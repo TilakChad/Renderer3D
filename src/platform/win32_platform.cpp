@@ -247,8 +247,6 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
         CreateWritableBitmap(win32Platform.height, win32Platform.height);
         SetCursorPos(300, 300);
-        win32Platform.Mouse.xpos = 300;
-        win32Platform.Mouse.ypos = 300;
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 

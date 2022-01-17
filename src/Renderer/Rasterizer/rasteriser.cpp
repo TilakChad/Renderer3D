@@ -3,7 +3,6 @@
 #include "../../maths/vec.hpp"
 
 #include <algorithm>
-#include <future>
 #include <iostream>
 #include <vector>
 
@@ -683,18 +682,18 @@ void Rasteriser(int32_t x0, int32_t y0, float z0, float inv_w0, int32_t x1, int3
                     {
                         // auto uv = l1 * texA + l2 * texB + l3 * texC;
                         // Interpolate the depth perspective correctly
-                        // auto rgb = texture.Sample(Vec2(uv), Texture::Interpolation::NEAREST);
-                        depth    = z;
+                        auto rgb = texture.Sample(Vec2(uv), Texture::Interpolation::NEAREST);
+                        depth = z;
 
-                        //mem[0]   = rgb.z;
-                        //mem[1]   = rgb.y;
-                        //mem[2]   = rgb.x;
-                        //mem[3]   = 0x00; 
-                        //
-                        mem[0]   = z * 255;
-                        mem[1]   = z * 255;
-                        mem[2]   = z * 255;
-                        mem[3]   = 0x00;
+                         mem[0]   = rgb.z;
+                         mem[1]   = rgb.y;
+                         mem[2]   = rgb.x;
+                         mem[3]   = 0x00;
+                        
+                       /* mem[0] = z * 255;
+                        mem[1] = z * 255;
+                        mem[2] = z * 255;
+                        mem[3] = 0x00;*/
                     }
                 }
                 a1  = a1 + v0.y;
@@ -950,5 +949,24 @@ void Draw(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, Mat4f const &
 
     // Near plane clipping will introduce one extra triangle at most.
     Clip3D(v0, v1, v2);
+}
+
+void Draw(std::vector<VertexAttrib3D> &vertex_vector, std::vector<uint32_t> const &index_vector, Mat4f const &matrix)
+{
+    assert(index_vector.size() % 3 == 0);
+
+    VertexAttrib3D v0, v1, v2;
+    for (std::size_t i = 0; i < index_vector.size(); i += 3)
+    {
+        v0          = vertex_vector[index_vector[i]];
+        v1          = vertex_vector[index_vector[i + 1]];
+        v2          = vertex_vector[index_vector[i + 2]];
+
+        v0.Position = matrix * v0.Position;
+        v1.Position = matrix * v1.Position;
+        v2.Position = matrix * v2.Position;
+
+        Clip3D(v0,v1,v2);
+    }
 }
 } // namespace Pipeline3D
