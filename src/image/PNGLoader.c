@@ -106,7 +106,13 @@ uint8_t *LoadPNGFromMemory(uint8_t *buffer, uint32_t length, uint32_t *width, ui
     uint8_t *deflate_stream = malloc(sizeof(uint8_t) * MAX_SIZE);
     uint32_t deflate_len    = 0;
 
-    validate_header(buffer);
+    // Do this check ... Don't again waste time trying to decode jpg file as png and debug png code 
+    if (!validate_header(buffer))
+    {
+        fprintf(stderr, "\nNot a valid PNG file\n");
+        free(deflate_stream);
+        return NULL;
+    }
     // Advance stream to the 8th bit where header finished
 
     uint32_t  pos = 8;
