@@ -3,7 +3,9 @@
 #include "../../maths/vec.hpp"
 
 #include <algorithm>
+#include <future>
 #include <iostream>
+#include <thread>
 #include <vector>
 
 static RenderDevice Device;
@@ -644,24 +646,24 @@ void Rasteriser(int32_t x0, int32_t y0, float z0, float inv_w0, int32_t x1, int3
     // Code duplication better than per pixel check
     if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::TEXTURE_MODE)
     {
-        //// My optimized rasterization
+        // My optimized rasterization
         auto texture = Device.Context.GetActiveTexture();
-        for (int h = minY; h <= maxY; ++h)
-        {
-            int32_t offset =
+        for (size_t h = minY; h <= maxY; ++h)
+        {/*
+            size_t offset =
                 (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
             mem = platform.colorBuffer.buffer + offset;
-            mem = mem + minX * platform.colorBuffer.noChannels;
+            mem = mem + minX * platform.colorBuffer.noChannels;*/
 
             a1  = a1_;
             a2  = a2_;
             a3  = a3_;
 
             // This is a very tight loop and need to be optimized heavily even for a suitable framerate
-            for (int w = minX; w <= maxX; ++w)
+            for (size_t w = minX; w <= maxX; ++w)
             {
                 if ((a1 | a2 | a3) >= 0 ||
-                    (a1 <= 0 && a2 <= 0 && a3 <= 0)) // --> Turns on rasterization of //  anti clockwise triangles
+                    (a1 <= 0 && a2 <= 0 && a3 <= 0)) // --> Turns on rasterization of anti clockwise triangles
                 {
 
                     l1 = static_cast<float>(a2) / area;
@@ -680,20 +682,76 @@ void Rasteriser(int32_t x0, int32_t y0, float z0, float inv_w0, int32_t x1, int3
 
                     if (z < depth)
                     {
-                        // auto uv = l1 * texA + l2 * texB + l3 * texC;
                         // Interpolate the depth perspective correctly
                         auto rgb = texture.Sample(Vec2(uv), Texture::Interpolation::NEAREST);
-                        depth = z;
+                        depth    = z;
 
-                         mem[0]   = rgb.z;
-                         mem[1]   = rgb.y;
-                         mem[2]   = rgb.x;
-                         mem[3]   = 0x00;
+                        // only calculate mem now if depth test actually passed
+
+                        size_t offset = (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width *
+                                        platform.colorBuffer.noChannels;
+                        mem = platform.colorBuffer.buffer + offset + w * platform.colorBuffer.noChannels;
+         
                         
-                       /* mem[0] = z * 255;
-                        mem[1] = z * 255;
-                        mem[2] = z * 255;
-                        mem[3] = 0x00;*/
+                        mem[0]   = rgb.z;
+                        mem[1]   = rgb.y;
+                        mem[2]   = rgb.x;
+                        mem[3]   = 0x00;
+                    }
+                }
+                a1  = a1 + v0.y;
+                a2  = a2 + v1.y;
+                a3  = a3 + v2.y;
+                // mem = mem + 4;
+            }
+            a1_ = a1_ - v0.x;
+            a2_ = a2_ - v1.x;
+            a3_ = a3_ - v2.x;
+        }
+    }
+    else if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::COLOR_MODE) // depth mode say 
+    {
+        for (size_t h = minY; h <= maxY; ++h)
+        {
+            size_t offset =
+                (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
+            mem = platform.colorBuffer.buffer + offset;
+            mem = mem + minX * platform.colorBuffer.noChannels;
+
+            a1  = a1_;
+            a2  = a2_;
+            a3  = a3_;
+
+            // This is a very tight loop and need to be optimized heavily even for a suitable framerate
+            for (size_t w = minX; w <= maxX; ++w)
+            {
+                if ((a1 | a2 | a3) >= 0 ||
+                    (a1 <= 0 && a2 <= 0 && a3 <= 0)) // --> Turns on rasterization of anti clockwise triangles
+                {
+
+                    l1 = static_cast<float>(a2) / area;
+                    l2 = static_cast<float>(a3) / area;
+                    l3 = static_cast<float>(a1) / area;
+
+                    //// Z is interpolated linearly in this space, due to perspective division that already occured
+                    float z     = l1 * z0 + l2 * z1 + l3 * z2;
+
+                    l1          = l1 * inv_w0;
+                    l2          = l2 * inv_w1;
+                    l3          = l3 * inv_w2;
+
+                    auto &depth = platform.zBuffer.buffer[h * platform.zBuffer.width + w];
+
+                    if (z < depth)
+                    {
+                        // Interpolate the depth perspective correctly
+                        depth    = z;
+
+
+                        mem[0]   = z * 255;
+                        mem[1]   = z * 255;
+                        mem[2]   = z * 255;
+                        mem[3]   = 0x00;
                     }
                 }
                 a1  = a1 + v0.y;
@@ -705,6 +763,10 @@ void Rasteriser(int32_t x0, int32_t y0, float z0, float inv_w0, int32_t x1, int3
             a2_ = a2_ - v1.x;
             a3_ = a3_ - v2.x;
         }
+    }
+    else
+    {
+    // Don't do anything here 
     }
 }
 
@@ -735,17 +797,22 @@ void ScreenSpace(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
                v2.Color, v0.TexCoord, v1.TexCoord, v2.TexCoord);
 }
 
-void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
+void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, MemAlloc<VertexAttrib3D> const& allocator)
 {
     v0.Position = v0.Position.PerspectiveDivide();
     v1.Position = v1.Position.PerspectiveDivide();
     v2.Position = v2.Position.PerspectiveDivide();
 
-    std::vector<VertexAttrib3D> outVertices{v0, v1, v2};
+    /*std::vector<VertexAttrib3D> outVertices{v0, v1, v2};
     outVertices.reserve(5);
 
     std::vector<VertexAttrib3D> inVertices{};
-    inVertices.reserve(5);
+    inVertices.reserve(5);*/
+    std::vector<VertexAttrib3D, MemAlloc<VertexAttrib3D>> outVertices(allocator); 
+    outVertices.push_back(v0);
+    outVertices.push_back(v1);
+    outVertices.push_back(v2);
+    auto       inVertices = outVertices;
 
     auto const clipPoly =
         std::vector<Vec2<float32>>{Vec2(-1.0f, 1.0f), Vec2(-1.0f, -1.0f), Vec2(1.0f, -1.0f), Vec2(1.0f, 1.0f)};
@@ -854,7 +921,8 @@ void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
     }
 }
 
-void Clip3D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
+void Clip3D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
+            MemAlloc<Pipeline3D::VertexAttrib3D> const &allocator)
 {
     // Before perspective division, clipping would take place
     // Not bothering it to clip against other planes, either take it or reject it fully
@@ -879,8 +947,14 @@ void Clip3D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
         return;
     // std::cout << "Triangle does not lie fully outside the clipping boundary" << std::endl;
 
-    std::vector<VertexAttrib3D> inVertices{v0, v1, v2};
-    std::vector<VertexAttrib3D> outVertices = inVertices;
+    // Replace these vectors 
+    // std::vector<VertexAttrib3D> inVertices{v0, v1, v2};
+    // std::vector<VertexAttrib3D> outVertices = inVertices;
+    std::vector<VertexAttrib3D, MemAlloc<VertexAttrib3D>> inVertices(allocator);
+    inVertices.push_back(v0);
+    inVertices.push_back(v1);
+    inVertices.push_back(v2);
+    auto outVertices = inVertices;
 
     if (v0.Position.z < 0 || v1.Position.z < 0 || v2.Position.z < 0)
     {
@@ -900,18 +974,14 @@ void Clip3D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
                 continue;
             else
             {
-                // <-- If any part is inside or outsie, interpolate along the z axis, all parameters
+                // <-- If any part is inside or outside, interpolate along the z axis, all parameters
                 //__debugbreak();
                 float          t  = (-v0.Position.z) / (v1.Position.z - v0.Position.z);
                 auto           pn = v0.Position + t * (v1.Position - v0.Position);
                 VertexAttrib3D vn;
                 vn.Position = pn;
 
-                // interpolate the texture coordinates and other vertex attributes
-                // TODO :: Correct this statement
                 vn.TexCoord = v0.TexCoord + t * (v1.TexCoord - v0.TexCoord);
-                if (vn.Position.w == 0.0f)
-                    __debugbreak();
                 outVertices.push_back(vn);
                 if (head)
                     outVertices.push_back(v1);
@@ -921,7 +991,7 @@ void Clip3D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
     for (int vertex = 1; vertex < outVertices.size() - 1; vertex += 1)
     {
         // ScreenSpace(outVertices.at(0), outVertices.at(vertex), outVertices.at((vertex + 1) % outVertices.size()));
-        ClipSpace2D(outVertices.at(0), outVertices.at(vertex), outVertices.at((vertex + 1) % outVertices.size()));
+        ClipSpace2D(outVertices.at(0), outVertices.at(vertex), outVertices.at((vertex + 1) % outVertices.size()), allocator);
     }
 }
 // First thing, vertex transform
@@ -948,16 +1018,19 @@ void Draw(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, Mat4f const &
     // A round through perspective projection matrix again
 
     // Near plane clipping will introduce one extra triangle at most.
-    Clip3D(v0, v1, v2);
+    // Clip3D(v0, v1, v2, Allocator);
 }
 
-void Draw(std::vector<VertexAttrib3D> &vertex_vector, std::vector<uint32_t> const &index_vector, Mat4f const &matrix)
+void Draw(std::vector<VertexAttrib3D> &vertex_vector, std::vector<uint32_t> const &index_vector, Mat4f const &matrix,
+          MemAlloc<Pipeline3D::VertexAttrib3D> const &allocator)
 {
     assert(index_vector.size() % 3 == 0);
 
+    // TODO :: Parallelize this loop
     VertexAttrib3D v0, v1, v2;
     for (std::size_t i = 0; i < index_vector.size(); i += 3)
     {
+        allocator.resource->reset();
         v0          = vertex_vector[index_vector[i]];
         v1          = vertex_vector[index_vector[i + 1]];
         v2          = vertex_vector[index_vector[i + 2]];
@@ -966,7 +1039,7 @@ void Draw(std::vector<VertexAttrib3D> &vertex_vector, std::vector<uint32_t> cons
         v1.Position = matrix * v1.Position;
         v2.Position = matrix * v2.Position;
 
-        Clip3D(v0,v1,v2);
+        Clip3D(v0, v1, v2,allocator);
     }
 }
 } // namespace Pipeline3D

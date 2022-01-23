@@ -4,10 +4,12 @@
 
 #include "./image/PNGLoader.h"
 #include "./include/geometry.hpp"
+#include "./include/memalloc.h"
 #include "./maths/vec.hpp"
 
 #include <fstream>
 
+// Start of the optimization phase of rasterisation
 static uint32_t                         catTexture;
 static uint32_t                         fancyTexture;
 static RenderDevice                    *Device = nullptr;
@@ -17,10 +19,13 @@ static uint32_t                         importedTexture;
 
 std::vector<Pipeline3D::VertexAttrib3D> GeoVertices;
 std::vector<uint32_t>                   GeoVerticesIndex;
+MemAlloc<Pipeline3D::VertexAttrib3D>    MemAllocator;
+MonotonicMemoryResource                 resource;
 
 // Leave ray tracer for now and continue on rasteriser for sometime
-// TODO : fragment shader emulation
-
+// TODO : fragment  shader emulation
+// TODO : Vectorize rasterisation code and matrix operations
+// TODO : Implement thread pool
 Vec3f   cameraPosition = Vec3f();
 float   yaw            = 0;
 float   pitch          = 0;
@@ -69,47 +74,42 @@ void RendererMainLoop(Platform *platform)
         platform->bFirst = false;
 
         { // Rasterisation
-
-            importedTexture = CreateTexture("../Blender/SmartIUV.png");
-            if (!importedTexture)
-                std::cout << "Failed to create imported texture..";
-            else
-                std::cout << "Successfully created the imported texture..";
-
             Device = GetRasteriserDevice();
             // Device->Context.SetRasteriserMode(RenderDevice::RasteriserMode::NONE_CULL);
             // Device->Context.SetMergeMode(RenderDevice::MergeMode::BLEND_MODE);
-            Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_MODE);
+            Device->Context.SetMergeMode(RenderDevice::MergeMode::COLOR_MODE);
+            // Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_MODE);
             // Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_BLENDING_MODE);
-
+            // Device->Context.SetMergeMode(RenderDevice::MergeMode::NOTHING);
             Object3D model("../Blender/macube.obj");
 
             GeoVertices.clear();
             GeoVerticesIndex.clear();
-            
+
             model.LoadGeometry(GeoVertices, GeoVerticesIndex);
-            
+
             std::cout << "Total number of vertices loaded were : " << GeoVertices.size() << std::endl;
             std::cout << "Total number of indices loaded were : " << GeoVerticesIndex.size() << std::endl;
             platform->SetOpacity(1.0f);
+            SetActiveTexture(model.Materials.at(0).texture_id);
+
+            // Initialize the monotonic buffer resource here
+            resource     = MonotonicMemoryResource{std::malloc(8192), 8192};
+            MemAllocator = MemAlloc<Pipeline3D::VertexAttrib3D>(&resource);
         }
     }
     // Rasterisation
+    static float time = 0.0f;
+    time += platform->deltaTime;
     // ClearColor(0x00, 0xFF, 0x00);
     FastClearColor(0xC0, 0xC0, 0xC0, 0xC0);
-    SetActiveTexture(importedTexture);
-
     using namespace Pipeline3D;
     Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f);
-    auto  model     = Mat4f(1.0f)
-                     .translate(Vec3f(0.0f, 0.0f, -6.5f))
-                     .translate(Vec3f(0.0f, 0.0f, 0.0f))
-                     .scale(Vec3f(0.5f, 0.5f, 0.5f));
-
+    auto  model     = Mat4f(1.0f).translate(Vec3f(0.0f, 0.0f, -4.5f)).translate(Vec3f(0.0f, 0.0f, 0.0f)).rotateY(time);
+    //      .scale(Vec3f(0.5f, 0.5f, 0.5f));
     ClearDepthBuffer();
-    SetActiveTexture(importedTexture);
     auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + getFrontVector(platform), Vec3f(0.0f, 1.0f, 0.0f));
     transform       = transform * lookMatrix * model;
-    Pipeline3D::Draw(GeoVertices, GeoVerticesIndex, transform);
+    Pipeline3D::Draw(GeoVertices, GeoVerticesIndex, transform, MemAllocator);
     platform->SwapBuffer();
 }

@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <vector>
+#include <algorithm>
 
 // Where to put these info? .. Both rasteriser and ray tracer would need this info though
 // Trying to implement a common abstraction for both rasterizer and raytracer
@@ -159,13 +160,19 @@ namespace Pipeline3D
 {
 void ClearDepthBuffer()
 {
+    // I guess setting it to zero would be better though ... since its taking a long time too 
     auto platform = GetCurrentPlatform();
-    for (uint32_t h = 0; h < platform.zBuffer.height; ++h)
+    /*for (uint32_t h = 0; h < platform.zBuffer.height; ++h)
     {
         for (uint32_t w = 0; w < platform.zBuffer.width; ++w)
         {
             platform.zBuffer.buffer[h * platform.zBuffer.width + w] = 1.0f;
         }
-    }
+    }*/
+
+    // who said std:: algorithms are bad :D
+    auto size = platform.zBuffer.width * platform.zBuffer.height; 
+    std::fill(platform.zBuffer.buffer,platform.zBuffer.buffer + size, 1.0f); 
+    // std::memset(platform.zBuffer.buffer, 0, sizeof(float) * size);
 }
 } // namespace Pipelin3D
