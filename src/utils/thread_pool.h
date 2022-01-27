@@ -3,10 +3,12 @@
 #include "../include/rasteriser.h"
 #include "../maths/vec.hpp"
 #include <array>
+#include <barrier>
 #include <chrono>
 #include <functional>
 #include <future>
 #include <iostream>
+#include <latch>
 #include <mutex>
 #include <queue>
 #include <ranges>
@@ -88,9 +90,10 @@ class ThreadPool
     std::vector<std::thread> worker_threads;
 
   public:
-    std::atomic<uint8_t> counter = 0;
-
-    using ThreadPoolFuncPtr      = void (*)(void *); // Function returning void and taking void ptr
+    // std::atomic<uint8_t> counter = 0;
+    // pointers to the rescue .. wonder what other languages use instead of pointer
+    std::latch *latch       = nullptr;
+    using ThreadPoolFuncPtr = void (*)(void *); // Function returning void and taking void ptr
     struct ThreadPoolFunc
     {
         // Function to pointer
@@ -121,7 +124,9 @@ class ThreadPool
             if (task_queue.pop(task))
             {
                 task();
-                counter++;
+                // Signals that this thread's work has finished
+                latch->count_down();
+                // counter++;
             }
         }
     }
@@ -133,11 +138,17 @@ class ThreadPool
     // Poor man's signal handling
     uint8_t finished() const
     {
-        return counter.load();
+        // return counter.load();
+        return 0;
     }
-    void started()
+    void wait_till_finished()
     {
-        counter.store(0);
+        latch->wait();
+    }
+    void started(std::latch* wait_till)
+    {
+        // counter.store(0);
+        latch = wait_till;
     }
 
     ~ThreadPool()

@@ -589,7 +589,8 @@ void ParallelRenderer::ParallelPipeline(ThreadPool                              
                                         std::vector<uint32_t> const &index_vector, Mat4f const &matrix,
                                         std::vector<MemAlloc<Pipeline3D::VertexAttrib3D>> &allocator)
 {
-    thread_pool.started();
+    std::latch waiter(no_of_partitions);
+    thread_pool.started(&waiter);
     // Allocate objects on the stack
     ParallelThreadArgStruct args[no_of_partitions];
 
@@ -604,11 +605,12 @@ void ParallelRenderer::ParallelPipeline(ThreadPool                              
             Parallel::ParallelTypeErasedDraw,
             static_cast<void *>(&args[i - 1]))); // Prepare rasteriser to take type erased argument
     }
-    while (thread_pool.finished() != no_of_partitions)
-    {
-        // using namespace std::chrono;
-        // std::this_thread::sleep_for(0.001s);
-    };
+    //while (thread_pool.finished() != no_of_partitions)
+    //{
+    //    // using namespace std::chrono;
+    //    // std::this_thread::sleep_for(0.001s);
+    //};
+    thread_pool.wait_till_finished();
     for (auto &alloc : allocator)
         alloc.resource->reset();
 }
