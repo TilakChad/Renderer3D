@@ -50,7 +50,7 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     SIMD::Vec4ss inc_a3_ = SIMD::Vec4ss(-p2.x);
 
     SIMD::Vec4ss a1, a2, a3;
-    SIMD::Vec4ss zvec(v0.z/area, v1.z/area, v2.z/area, 0.0f);
+    SIMD::Vec4ss zvec(v0.z / area, v1.z / area, v2.z / area, 0.0f);
     // zvec = zvec;
     // Now processing downwards
 
@@ -168,7 +168,7 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     }
     else
     {
-        auto inv_w   = SIMD::Vec4ss(v0.inv_w/area, v1.inv_w/area, v2.inv_w/area, 0.0f);
+        auto inv_w   = SIMD::Vec4ss(v0.inv_w / area, v1.inv_w / area, v2.inv_w / area, 0.0f);
         auto texture = GetActiveTexture();
         for (size_t h = minY; h <= maxY; ++h)
         {
@@ -207,9 +207,9 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                     lvec4      = Vec4ss(_mm_shuffle_ps(lvec4.vec, lvec4.vec, _MM_SHUFFLE(2, 1, 3, 0)));
 
                     // Retrieve the uv co-ordinate of texture using the barycentric co-ordinate
-                    // These branches and lookup aren't that expensive 
-                    // mtx locking is expensive 
-                    // Depth and uv could be calculated incrementally, but lets not work on that for now 
+                    // These branches and lookup aren't that expensive
+                    // mtx locking is expensive
+                    // Depth and uv could be calculated incrementally, but lets not work on that for now
                     if (mask & 0x08)
                     {
                         // plot first pixel
@@ -362,10 +362,10 @@ static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
     std::vector<VertexAttrib3D, MemAlloc<VertexAttrib3D>> outVertices({v0, v1, v2}, allocator);
     auto                                                  inVertices = outVertices;
 
-    auto const                                            clipPoly =
-        std::vector<Vec2<float32>>{Vec2(-1.0f, 1.0f), Vec2(-1.0f, -1.0f), Vec2(1.0f, -1.0f), Vec2(1.0f, 1.0f)};
+    std::vector<Vec2f, MemAlloc<Vec2f>>                   clipPoly(
+                          {Vec2(-1.0f, 1.0f), Vec2(-1.0f, -1.0f), Vec2(1.0f, -1.0f), Vec2(1.0f, 1.0f)}, allocator);
 
-    std::vector<Vec2<float32>> clipLines(clipPoly.size());
+    std::vector<Vec2f, MemAlloc<Vec2f>> clipLines(clipPoly.size(), allocator);
 
     for (int i = 0; i < clipPoly.size(); ++i)
         clipLines.at(i) = clipPoly.at((i + 1) % clipPoly.size()) - clipPoly.at(i);
@@ -385,7 +385,7 @@ static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
 
         for (size_t i = 0; i < inVertices.size(); ++i)
         {
-            auto v0 = inVertices.at(i), v1 = inVertices.at((i + 1) % inVertices.size());
+            auto const &v0 = inVertices.at(i), v1 = inVertices.at((i + 1) % inVertices.size());
 
             auto head = Vec2<float>::Determinant(line, Vec2f(v1.Position.x, v1.Position.y) - clipPoly[vert]) >= 0;
             auto tail = Vec2<float>::Determinant(line, Vec2f(v0.Position.x, v0.Position.y) - clipPoly[vert]) >= 0;
@@ -471,6 +471,7 @@ static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
 static void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAttrib3D const &v2,
                    MemAlloc<Pipeline3D::VertexAttrib3D> &allocator, int32_t XMinBound, int32_t XMaxBound)
 {
+    // TODO :: SIMDify this 
     if (v0.Position.z > v0.Position.w && v1.Position.z > v1.Position.w && v2.Position.z > v2.Position.w)
         return;
     if (v0.Position.x < -v0.Position.w && v1.Position.x < -v1.Position.w && v2.Position.x < -v2.Position.w)
@@ -494,9 +495,9 @@ static void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAtt
         for (int i = 0; i < inVertices.size(); ++i)
         {
             //  __debugbreak();
-            auto v0   = inVertices.at(i);
-            auto v1   = inVertices.at((i + 1) % inVertices.size());
-            bool head = v1.Position.z >= 0.0f;
+            auto const &v0   = inVertices.at(i);
+            auto const &v1   = inVertices.at((i + 1) % inVertices.size());
+            bool        head = v1.Position.z >= 0.0f;
             // std::numeric_limits<float>::epsilon();
             bool tail = v0.Position.z >= 0.0f;
             // std::numeric_limits<float>::epsilon();
@@ -540,6 +541,7 @@ static void Draw(std::vector<VertexAttrib3D> const &vertex_vector, std::vector<u
 
     for (std::size_t i = 0; i < index_vector.size(); i += 3)
     {
+        allocator.resource->reset();
         v0          = vertex_vector[index_vector[i]];
         v1          = vertex_vector[index_vector[i + 1]];
         v2          = vertex_vector[index_vector[i + 2]];
@@ -605,13 +607,41 @@ void ParallelRenderer::ParallelPipeline(ThreadPool                              
             Parallel::ParallelTypeErasedDraw,
             static_cast<void *>(&args[i - 1]))); // Prepare rasteriser to take type erased argument
     }
-    //while (thread_pool.finished() != no_of_partitions)
+    // while (thread_pool.finished() != no_of_partitions)
     //{
-    //    // using namespace std::chrono;
-    //    // std::this_thread::sleep_for(0.001s);
-    //};
+    //     // using namespace std::chrono;
+    //     // std::this_thread::sleep_for(0.001s);
+    // };
     thread_pool.wait_till_finished();
     for (auto &alloc : allocator)
         alloc.resource->reset();
 }
+
+void ParallelRenderer::AlternativeParallelPipeline(Alternative::ThreadPool                       &thread_pool,
+                                                   std::vector<Pipeline3D::VertexAttrib3D> const &vertex_vector,
+                                                   std::vector<uint32_t> const &index_vector, Mat4f const &matrix,
+                                                   std::vector<MemAlloc<Pipeline3D::VertexAttrib3D>> &allocator)
+{
+    std::latch waiter(no_of_partitions);
+    // Allocate objects on the stack
+    ParallelThreadArgStruct args[no_of_partitions];
+
+    for (auto i : std::ranges::iota_view(1u, no_of_partitions + 1))
+    {
+        args[i - 1] = ParallelThreadArgStruct(&vertex_vector, &index_vector, &matrix, &allocator[i], boundary[i - 1],
+                                              boundary[i]);
+    }
+
+    // operate on passive ptr here
+    auto count = 0u;
+    for (auto &task : *thread_pool.get_passive_ptr())
+    {
+        task = Alternative::ThreadPool::AlternativeTaskDesc{
+            false, Alternative::ThreadPool::ThreadPoolFunc(Parallel::ParallelTypeErasedDraw, &args[count++])};
+    }
+
+    thread_pool.started(&waiter);
+    thread_pool.wait_till_finished();
+}
+
 } // namespace Parallel

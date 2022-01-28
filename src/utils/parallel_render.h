@@ -14,7 +14,7 @@ class ParallelRenderer
     // Each time screen buffer changes ParallelRendered need to be remodified
     // Only the rasteriser stage will be parallelized for now
     // I guess it should take thread pool as input to initiate parallel operation during Rasterisation
-    constexpr static uint32_t no_of_partitions = 2; // or number of threads
+    constexpr static uint32_t no_of_partitions = 4; // or number of threads
     enum class PartitionType
     {
         HORIZONTAL,
@@ -56,6 +56,10 @@ class ParallelRenderer
     void ParallelPipeline(ThreadPool &thread_pool, std::vector<Pipeline3D::VertexAttrib3D> const &vertex_vector,
                           std::vector<uint32_t> const &index_vector, Mat4f const &matrix,
                           std::vector<MemAlloc<Pipeline3D::VertexAttrib3D>> &allocator);
+    void AlternativeParallelPipeline(Alternative::ThreadPool                       &thread_pool,
+                                     std::vector<Pipeline3D::VertexAttrib3D> const &vertex_vector,
+                                     std::vector<uint32_t> const &index_vector, Mat4f const &matrix,
+                                     std::vector<MemAlloc<Pipeline3D::VertexAttrib3D>> &allocator);
 
     void reset_rendering_status()
     {
