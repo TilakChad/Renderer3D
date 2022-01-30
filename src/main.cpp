@@ -1,29 +1,32 @@
+#include "./include/geometry.hpp"
 #include "./include/platform.h"
 #include "./include/rasteriser.h"
 #include "./include/raytracer.h"
+#include "./include/render.h"
 
 #include "./image/PNGLoader.h"
-#include "./include/geometry.hpp"
 #include "./maths/vec.hpp"
 
 #include "./utils/memalloc.h"
 #include "./utils/parallel_render.h"
+#include "./utils/shapes.h"
 #include "./utils/thread_pool.h"
 
-#include <fstream>
+// Lets now work on lighting 
+
 
 // Start of the optimization phase of rasterisation
-static uint32_t      catTexture;
-static uint32_t      fancyTexture;
-static RenderDevice *Device = nullptr;
-// static Mat4f                            TransformMatrix;
-// static SIMD::Mat4ss                     TransformMatrix;
-int32_t                                 inc = 1;
+static uint32_t                         catTexture;
+static uint32_t                         fancyTexture;
+static RenderDevice                    *Device = nullptr;
+
 static uint32_t                         importedTexture;
 
-std::vector<Pipeline3D::VertexAttrib3D> GeoVertices;
-std::vector<uint32_t>                   GeoVerticesIndex;
+std::vector<Pipeline3D::VertexAttrib3D> Vertices;
+std::vector<uint32_t>                   Indices;
 
+RenderList                              Renderables{};
+BackgroundTexture                       bckg;
 // System wide resources
 // Thread local didn't solve any .. only created problems
 // Since these thread local things get uninitialized, they should probably be initialized during the creation of thread
@@ -32,8 +35,10 @@ std::vector<MemAlloc<Pipeline3D::VertexAttrib3D>> MemAllocator;
 std::vector<MonotonicMemoryResource>              resource;
 // making thread_pool thread_local is thread bomb .. insta OS stop responding
 // ThreadPool                                        thread_pool{};
+
 Alternative::ThreadPool    thread_pool{};
 Parallel::ParallelRenderer parallel_renderer;
+
 // Leave ray tracer for now and continue on rasteriser for sometime
 // TODO : fragment  shader emulation
 // TODO : Vectorize rasterisation code and matrix operations
@@ -57,15 +62,14 @@ Vec3f   getFrontVector(Platform *platform)
     else if (pitch < -1.55334f)
         pitch = -1.55334f;
 
-    auto frontVector = Vec3f();
-    frontVector.x    = std::sin(yaw) * std::cos(pitch);
-    frontVector.y    = std::sin(pitch);
-    frontVector.z    = std::cos(pitch) * -std::cos(yaw);
+    auto frontVector              = Vec3f();
+    frontVector.x                 = std::sin(yaw) * std::cos(pitch);
+    frontVector.y                 = std::sin(pitch);
+    frontVector.z                 = std::cos(pitch) * -std::cos(yaw);
 
-    xPos             = platform->Mouse.xpos;
-    yPos             = platform->Mouse.ypos;
+    xPos                          = platform->Mouse.xpos;
+    yPos                          = platform->Mouse.ypos;
 
-    // std::cout << "Delta xpos and ypos are : " << delta_xPos << " " << delta_yPos << std::endl;
     constexpr float move_constant = 5.0f;
     auto            fVector       = frontVector.unit();
 
@@ -93,23 +97,15 @@ void RendererMainLoop(Platform *platform)
             Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_MODE);
             // Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_BLENDING_MODE);
             // Device->Context.SetMergeMode(RenderDevice::MergeMode::NOTHING);
-            Object3D model("../Blender/unwrappedorder.obj");
-            // Object3D model("../Blender/macube.obj");
+            Object3D model("../Blender/macube.obj");
+            Object3D model2("../Blender/unwrappedorder.obj");
             // Object3D model("../Blender/bagpack/backpack.obj");
 
-            GeoVertices.clear();
-            GeoVerticesIndex.clear();
-
-            model.LoadGeometry(GeoVertices, GeoVerticesIndex);
-
-            std::cout << "Total number of vertices loaded were : " << GeoVertices.size() << std::endl;
-            std::cout << "Total number of indices loaded were : " << GeoVerticesIndex.size() << std::endl;
-            platform->SetOpacity(1.0f);
-            SetActiveTexture(model.Materials.at(0).texture_id);
-
-            // Initialize the monotonic buffer resource here
-            // resource          = MonotonicMemoryResource{std::malloc(256*1024), 1024*256};
-            //  MemAllocator      = MemAlloc<Pipeline3D::VertexAttrib3D>(&resource);
+            // model.LoadGeometry(GeoVertices, GeoVerticesIndex);
+            /*model2.LoadGeometry(GeoSphVertices, GeoSphVerticesIndex);*/
+            // platform->SetOpacity(1.0f);
+            // fancyTexture = model.Materials.at(0).texture_id;
+            //  catTexture   = model2.Materials.at(0).texture_id;
             for (int i = 0; i < 8; ++i)
             {
                 resource.push_back(MonotonicMemoryResource{std::malloc(1024 * 1024), 1024 * 1024});
@@ -119,44 +115,91 @@ void RendererMainLoop(Platform *platform)
                 MemAllocator.push_back(MemAlloc<Pipeline3D::VertexAttrib3D>(&resource.at(i)));
             }
             parallel_renderer = Parallel::ParallelRenderer(platform->colorBuffer.width, platform->colorBuffer.height);
+
+            // Create a checked texture
+            Pipeline3D::VertexAttrib3D v0, v1, v2, v3;
+            v0.Position = Vec4f(-5.0f, 0.0f, 5.0f, 1.0f);
+            v0.Color    = Vec4f(1.0f, 0.0f, 0.0f, 0.0f);
+            v0.TexCoord = Vec2f(0.0f, 0.0f);
+            v1.Position = Vec4f(5.0f, 0.0f, 5.0f, 1.0f);
+            v1.Color    = Vec4f(0.0f, 1.0f, 0.0f, 0.0f);
+            v1.TexCoord = Vec2f(1.0f, 0.0f);
+            v2.Position = Vec4f(5.0f, 0.0f, -5.0f, 1.0f);
+            v2.Color    = Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
+            v2.TexCoord = Vec2f(1.0f, 1.0f);
+            v3.Position = Vec4f(-5.0f, 0.0f, -5.0f, 1.0f);
+            v3.Color    = Vec4f(1.0f, 1.0f, 0.0f, 0.0f);
+            v3.TexCoord = Vec2f(0.0f, 1.0f);
+
+            Vertices.insert(Vertices.end(), {v0, v1, v2, v3});
+            Indices.insert(Indices.end(), {2, 1, 0, 3, 2, 0});
+
+            // Allocate a texture memory and write all the pixels yourself .. less do it
+            Texture texture;
+            texture.width  = 100;
+            texture.height = 100;
+
+            // Each texture with only 1 byte of data per pixel
+            texture.bit_depth = 8;
+            texture.channels  = 1;
+            constexpr int dim = 10;
+            texture.raw_data  = new uint8_t[texture.width * texture.height];
+
+            for (int h = 0; h < texture.height; ++h)
+            {
+                int a = h / dim;
+                for (int w = 0; w < texture.width; ++w)
+                {
+                    int b = w / dim;
+                    if ((a + b) % 2 == 0)
+                        texture.raw_data[h * texture.width + w] = 0xFF;
+                    else
+                        texture.raw_data[h * texture.width + w] = 0x00;
+                }
+            }
+            fancyTexture = CreateTextureFromData(texture);
+            SetActiveTexture(fancyTexture);
+
+            // Lets try generating cylinder from nothingness - aka doing magic
+            // A little flashback to parametric equations (Parametric equations are :love:)
+            // To create a cylinder standing on xz axis, we have
+
+            // x = r * cos(theta); theta is the angle between radial vector and x axis
+            // z = r * sin(theta);
+            // y = h (taken in steps)
+
+            // Renderables.AddRenderable(Shape::Cylinder::offload(1.0f, 2.0f));
+            Renderables.AddRenderable(RenderInfo(std::move(Vertices),std::move(Indices),RenderDevice::MergeMode::TEXTURE_MODE,fancyTexture));
         }
+        bckg.CreateBackgroundTexture("../img103.png");
+        bckg.SampleForCurrentFrameBuffer(platform, false);
     }
     else if (platform->bSizeChanged)
     {
         platform->bSizeChanged = false;
         parallel_renderer      = Parallel::ParallelRenderer(platform->colorBuffer.width, platform->colorBuffer.height);
+        bckg.SampleForCurrentFrameBuffer(platform, true);
     }
-    // Rasterisation
     static float time = 0.0f;
     time += platform->deltaTime;
-    // ClearColor(0x00, 0xFF, 0x00);
-    FastClearColor(0xC0, 0xC0, 0xC0, 0xC0);
+    // RenderBackground(bckg);
+    FastClearColor(0x00, 0x00, 0x00, 0x00);
     using namespace Pipeline3D;
-    Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f);
-    // auto transform = SIMD::Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f);
-    //      .scale(Vec3f(0.5f, 0.5f, 0.5f));
+    Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f,20.0f);
     ClearDepthBuffer();
-    /* transform =
-        transform * SIMD::lookAtMatrix(cameraPosition, cameraPosition + getFrontVector(platform), Vec3f(0.0f, 1.0f,
-        0.0f));
-    */ // transform = transform.translate(Vec3f(0.0f, 0.0f, -4.5f));
-
-    // .rotateY(time);
-    auto model      = Mat4f(1.0f).translate(Vec3f(0.0f, 0.0f, -4.5f)).rotateY(time);
+    auto model      = Mat4f(1.0f).translate(Vec3f(0.0f, 0.0f, 0.0f)).rotateY(time); //.rotateX(time / 2.0f);
     auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + getFrontVector(platform), Vec3f(0.0f, 1.0f, 0.0f));
+    
     transform       = transform * lookMatrix * model;
-    //  auto transform = Mat4(1.0f);
+    // seperate the model matrix from here to other space, since we also ned to interpolate the vertex position like other things in the screen space to calculate other effects 
+    // so basically yes, its all to calculate fragpos
+    // Lets implement flat shading for now, instead of per pixel lighting .. we will come back to it 
+    for (auto &renderable : Renderables.Renderables)
+        renderable.scene_transform = transform;
 
-    // Pipeline3D::Draw(GeoVertices, GeoVerticesIndex, transform, MemAllocator);
-    parallel_renderer.AlternativeParallelPipeline(thread_pool, GeoVertices, GeoVerticesIndex, transform, MemAllocator);
-    // parallel_renderer.ParallelPipeline(thread_pool, GeoVertices, GeoVerticesIndex, transform, MemAllocator);
+    parallel_renderer.AlternativeParallelRenderablePipeline(thread_pool, Renderables, MemAllocator);
     platform->SwapBuffer();
 }
-
-// ThreadPool &get_current_thread_pool()
-//{
-//     return thread_pool;
-// }
 
 Parallel::ParallelRenderer &get_current_parallel_renderer()
 {

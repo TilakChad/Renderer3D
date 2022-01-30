@@ -2,13 +2,18 @@
 #include "../../image/PNGLoader.h"
 #include "../../maths/vec.hpp"
 
+#include "../../utils/thread_pool.h"
+#include "../../utils/parallel_render.h"
 #include <algorithm>
 #include <future>
 #include <iostream>
 #include <thread>
 #include <vector>
 
-static RenderDevice Device;
+static RenderDevice                Device;
+
+extern Parallel::ParallelRenderer &get_current_parallel_renderer();
+extern ThreadPool                 &get_current_thread_pool();
 
 void Rasteriser(int x1, int y1, int x2, int y2, int x3, int y3, Vec4f attribA, Vec4f attribB, Vec4f attribC, Vec2f texA,
                 Vec2f texB, Vec2f texC)
@@ -344,7 +349,7 @@ void ClipSpace(Pipeline2D::VertexAttrib2D v0, Pipeline2D::VertexAttrib2D v1, Pip
 
         for (size_t i = 0; i < inVertices.size(); ++i)
         {
-            auto v0 = inVertices.at(i), v1 = inVertices.at((i + 1) % inVertices.size());
+            auto const& v0 = inVertices.at(i), v1 = inVertices.at((i + 1) % inVertices.size());
 
             auto head = Vec2<float>::Determinant(line, v1.Position - clipPoly[vert]) >= 0;
             auto tail = Vec2<float>::Determinant(line, v0.Position - clipPoly[vert]) >= 0;
@@ -470,7 +475,7 @@ void BresenhamLineRasteriser(Pipeline2D::VertexAttrib2D const &v0, Pipeline2D::V
 
         for (size_t i = 0; i < inVertices.size(); ++i)
         {
-            auto v0 = inVertices.at(i), v1 = inVertices.at((i + 1) % inVertices.size());
+            auto const& v0 = inVertices.at(i), v1 = inVertices.at((i + 1) % inVertices.size());
 
             auto head = Vec2<float>::Determinant(line, v1.Position - clipPoly[vert]) >= 0;
             auto tail = Vec2<float>::Determinant(line, v0.Position - clipPoly[vert]) >= 0;
@@ -506,8 +511,8 @@ void BresenhamLineRasteriser(Pipeline2D::VertexAttrib2D const &v0, Pipeline2D::V
     if (outVertices.empty())
         return;
 
-    auto     v2       = outVertices.back();
-    auto     v3       = outVertices.front();
+    auto const&     v2       = outVertices.back();
+    auto const&    v3       = outVertices.front();
 
     Platform platform = GetCurrentPlatform();
     int      x1       = static_cast<int>((platform.width - 1) / 2 * (v2.Position.x + 1));
@@ -604,6 +609,250 @@ void RenderDevice::Draw(Pipeline2D::VertexAttrib2D const &v0, Pipeline2D::Vertex
 
 namespace Pipeline3D
 {
+void ORasteriser(int32_t x0, int32_t y0, float z0, float inv_w0, int32_t x1, int32_t y1, float z1, float inv_w1,
+                 int32_t x2, int32_t y2, float z2, float inv_w2, Vec4f colorA, Vec4f colorB, Vec4f colorC, Vec2f texA,
+                 Vec2f texB, Vec2f texC)
+{
+    Platform platform = GetCurrentPlatform();
+
+    int      minX     = std::min({x0, x1, x2});
+    int      maxX     = std::max({x0, x1, x2});
+
+    int      minY     = std::min({y0, y1, y2});
+    int      maxY     = std::max({y0, y1, y2});
+
+    // Assume vectors are in clockwise ordering
+    Vec2  v0   = Vec2(x1, y1) - Vec2(x0, y0);
+    Vec2  v1   = Vec2(x2, y2) - Vec2(x1, y1);
+    Vec2  v2   = Vec2(x0, y0) - Vec2(x2, y2);
+
+    Vec2  vec0 = Vec2(x0, y0);
+    Vec2  vec1 = Vec2(x1, y1);
+    Vec2  vec2 = Vec2(x2, y2);
+
+    float area = Vec2<int>::Determinant(v1, v0);
+
+    // Perspective depth interpolation, perspective correct texture interpolation ....
+    Vec2 point = Vec2(minX, minY);
+    // Start collecting points from here
+
+    float a1_ = Vec2<int32_t>::Determinant(point - vec0, v0);
+    float a2_ = Vec2<int32_t>::Determinant(point - vec1, v1);
+    float a3_ = Vec2<int32_t>::Determinant(point - vec2, v2);
+
+    // Read to process 4 pixels at a time
+    SIMD::Vec4ss a1_vec  = SIMD::Vec4ss(a1_, a1_ + v0.y, a1_ + 2 * v0.y, a1_ + 3 * v0.y);
+    SIMD::Vec4ss a2_vec  = SIMD::Vec4ss(a2_, a2_ + v1.y, a2_ + 2 * v1.y, a2_ + 3 * v1.y);
+    SIMD::Vec4ss a3_vec  = SIMD::Vec4ss(a3_, a3_ + v2.y, a3_ + 2 * v2.y, a3_ + 3 * v2.y);
+
+    SIMD::Vec4ss inc_a1  = SIMD::Vec4ss(4 * v0.y);
+    SIMD::Vec4ss inc_a2  = SIMD::Vec4ss(4 * v1.y);
+    SIMD::Vec4ss inc_a3  = SIMD::Vec4ss(4 * v2.y);
+
+    SIMD::Vec4ss inc_a1_ = SIMD::Vec4ss(-v0.x);
+    SIMD::Vec4ss inc_a2_ = SIMD::Vec4ss(-v1.x);
+    SIMD::Vec4ss inc_a3_ = SIMD::Vec4ss(-v2.x);
+
+    SIMD::Vec4ss a1, a2, a3;
+    SIMD::Vec4ss zvec(z0, z1, z2, 0.0f);
+    zvec = zvec * (1.0 / area);
+    // Now processing downwards
+
+    constexpr int hStepSize = 4;
+    if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::TEXTURE_MODE) // depth mode say
+    {
+        // TODO :: Tile based rendering
+        for (size_t h = minY; h <= maxY; ++h)
+        {
+            // Start of edge function calculated
+            a1 = a1_vec;
+            a2 = a2_vec;
+            a3 = a3_vec;
+
+            // This is a very tight loop and need to be optimized heavily even for a suitable framerate
+            for (size_t w = minX; w <= maxX; w += hStepSize)
+            {
+                // At each step calculate the positivity or negativity now
+                // Check how many a1,a2 and a3 are positive using SIMD masks
+                // Don't know how to yet
+                // auto mask = std::max(SIMD::Vec4ss::generate_mask(a1, a2, a3),
+                // SIMD::Vec4ss::generate_neg_mask(a1,a2,a3));
+                // depending on this mask plot pixel
+                auto mask = SIMD::Vec4ss::generate_mask(a1, a2, a3);
+                if (mask > 0)
+                {
+
+                    size_t offset = (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width *
+                                    platform.colorBuffer.noChannels;
+                    uint8_t *off   = platform.colorBuffer.buffer + offset + w * platform.colorBuffer.noChannels;
+                    uint8_t *mem   = off;
+                    auto     depth = &platform.zBuffer.buffer[h * platform.zBuffer.width + w];
+
+                    // Do barycentric calculations here and incrementally increase
+                    // Didn't find a better way, so offloading every array elements
+                    // What we need is the transpose of these matrices .. not using float load ... penality on simd
+                    // operations
+                    // float simd[3][4];
+                    //_mm_store_ps(simd[0], a1.vec);
+                    //_mm_store_ps(simd[1], a2.vec);
+                    //_mm_store_ps(simd[2], a3.vec);
+                    using namespace SIMD;
+                    auto   zero = _mm_setzero_ps();
+                    __m128 a    = _mm_unpackhi_ps(a2.vec, a1.vec);
+                    __m128 b    = _mm_unpackhi_ps(zero, a3.vec);
+                    __m128 c    = _mm_unpacklo_ps(a2.vec, a1.vec);
+                    __m128 d    = _mm_unpacklo_ps(zero, a3.vec);
+
+                    // Lol shuffle ni garna parxa tw
+                    auto lvec1 = Vec4ss(_mm_movehl_ps(a, b));
+                    auto lvec2 = Vec4ss(_mm_movelh_ps(b, a));
+
+                    auto lvec3 = Vec4ss(_mm_movehl_ps(c, d));
+                    auto lvec4 = Vec4ss(_mm_movelh_ps(d, c));
+
+                    // This shuffle should be avoidable using above operations on different order
+                    // Next time
+                    lvec1 = Vec4ss(_mm_shuffle_ps(lvec1.vec, lvec1.vec, _MM_SHUFFLE(2, 1, 3, 0)));
+                    lvec2 = Vec4ss(_mm_shuffle_ps(lvec2.vec, lvec2.vec, _MM_SHUFFLE(2, 1, 3, 0)));
+                    lvec3 = Vec4ss(_mm_shuffle_ps(lvec3.vec, lvec3.vec, _MM_SHUFFLE(2, 1, 3, 0)));
+                    lvec4 = Vec4ss(_mm_shuffle_ps(lvec4.vec, lvec4.vec, _MM_SHUFFLE(2, 1, 3, 0)));
+                    //
+                    // if (mask & 0x08)
+                    //{
+                    //    // plot first pixel
+                    //    // calculate z
+
+                    //    float z = SIMD::Vec4ss(simd[1][3], simd[2][3], simd[0][3], 0.0f).dot(zvec);
+                    //    if (z < depth[0])
+                    //    {
+                    //        depth[0] = z;
+                    //        mem[0]   = z * 255;
+                    //        mem[1]   = z * 255;
+                    //        mem[2]   = z * 255;
+                    //        mem[3]   = 0x00;
+                    //    }
+                    //}
+                    // if (mask & 0x04)
+                    //{
+                    //    // plot second pixel
+                    //    mem     = off + 4;
+
+                    //    float z = SIMD::Vec4ss(simd[1][2], simd[2][2], simd[0][2], 0.0f).dot(zvec);
+                    //    if (z < depth[1])
+                    //    {
+                    //        depth[1] = z;
+
+                    //        mem[0]   = z * 255;
+                    //        mem[1]   = z * 255;
+                    //        mem[2]   = z * 255;
+                    //        mem[3]   = 0x00;
+                    //    }
+                    //}
+                    // if (mask & 0x02)
+                    //{
+                    //    // plot third pixel
+                    //    mem     = off + 8;
+
+                    //    float z = SIMD::Vec4ss(simd[1][1], simd[2][1], simd[0][1], 0.0f).dot(zvec);
+                    //    if (z < depth[2])
+                    //    {
+                    //        depth[2] = z;
+
+                    //        mem[0]   = z * 255;
+                    //        mem[1]   = z * 255;
+                    //        mem[2]   = z * 255;
+                    //        mem[3]   = 0x00;
+                    //    }
+                    //}
+                    // if (mask & 0x01)
+                    //{
+                    //    // plot fourth pixel
+                    //    mem     = off + 12;
+
+                    //    float z = SIMD::Vec4ss(simd[1][0], simd[2][0], simd[0][0], 0.0f).dot(zvec);
+                    //    if (z < depth[3])
+                    //    {
+                    //        depth[3] = z;
+                    //        mem[0]   = z * 255;
+                    //        mem[1]   = z * 255;
+                    //        mem[2]   = z * 255;
+                    //        mem[3]   = 0x00;
+                    //    }
+                    //}
+                    if (mask & 0x08)
+                    {
+                        // plot first pixel
+                        // calculate z
+
+                        float z = lvec4.dot(zvec);
+                        if (z < depth[0])
+                        {
+                            depth[0] = z;
+                            mem[0]   = z * 255;
+                            mem[1]   = z * 255;
+                            mem[2]   = z * 255;
+                            mem[3]   = 0x00;
+                        }
+                    }
+                    if (mask & 0x04)
+                    {
+                        // plot second pixel
+                        mem     = off + 4;
+
+                        float z = lvec3.dot(zvec);
+                        if (z < depth[1])
+                        {
+                            depth[1] = z;
+
+                            mem[0]   = z * 255;
+                            mem[1]   = z * 255;
+                            mem[2]   = z * 255;
+                            mem[3]   = 0x00;
+                        }
+                    }
+                    if (mask & 0x02)
+                    {
+                        // plot third pixel
+                        mem     = off + 8;
+
+                        float z = lvec2.dot(zvec);
+                        if (z < depth[2])
+                        {
+                            depth[2] = z;
+
+                            mem[0]   = z * 255;
+                            mem[1]   = z * 255;
+                            mem[2]   = z * 255;
+                            mem[3]   = 0x00;
+                        }
+                    }
+                    if (mask & 0x01)
+                    {
+                        // plot fourth pixel
+                        mem     = off + 12;
+
+                        float z = lvec1.dot(zvec);
+                        if (z < depth[3])
+                        {
+                            depth[3] = z;
+                            mem[0]   = z * 255;
+                            mem[1]   = z * 255;
+                            mem[2]   = z * 255;
+                            mem[3]   = 0x00;
+                        }
+                    }
+                }
+
+                a1 = a1 + inc_a1;
+                a2 = a2 + inc_a2;
+                a3 = a3 + inc_a3;
+            }
+            a1_vec = a1_vec + inc_a1_;
+            a2_vec = a2_vec + inc_a2_;
+            a3_vec = a3_vec + inc_a3_;
+        }
+    }
+}
 
 void Rasteriser(int32_t x0, int32_t y0, float z0, float inv_w0, int32_t x1, int32_t y1, float z1, float inv_w1,
                 int32_t x2, int32_t y2, float z2, float inv_w2, Vec4f colorA, Vec4f colorB, Vec4f colorC, Vec2f texA,
@@ -630,78 +879,87 @@ void Rasteriser(int32_t x0, int32_t y0, float z0, float inv_w0, int32_t x1, int3
 
     uint8_t *mem;
     // potential for paralellization
-    int32_t area = Vec2<int>::Determinant(v1, v0);
+    float area = Vec2<int>::Determinant(v1, v0);
 
     // Perspective depth interpolation, perspective correct texture interpolation ....
-    float    l1, l2, l3; // Barycentric coordinates
+    Vec2               point = Vec2(minX, minY);
+    float              a1_   = Vec2<int32_t>::Determinant(point - vec0, v0);
+    float              a2_   = Vec2<int32_t>::Determinant(point - vec1, v1);
+    float              a3_   = Vec2<int32_t>::Determinant(point - vec2, v2);
 
-    Vec2     point = Vec2(minX, minY);
-    auto     a1_   = Vec2<int32_t>::Determinant(point - vec0, v0);
-    auto     a2_   = Vec2<int32_t>::Determinant(point - vec1, v1);
-    auto     a3_   = Vec2<int32_t>::Determinant(point - vec2, v2);
+    SIMD::Vec4ss       a, a_(a1_, a2_, a3_, 0.0f);
+    SIMD::Vec4ss       l;
+    const SIMD::Vec4ss z_vec     = SIMD::Vec4ss(z0, z1, z2, 0.0f);
+    const SIMD::Vec4ss inv_w     = SIMD::Vec4ss(inv_w0, inv_w1, inv_w2, 0.0f);
+    const SIMD::Vec4ss inc_ry    = SIMD::Vec4ss(v0.y, v1.y, v2.y, 0.0f);
+    const SIMD::Vec4ss inc_rx    = SIMD::Vec4ss(v0.x, v1.x, v2.x, 0.0f);
+    uint32_t           stride    = platform.colorBuffer.width * platform.colorBuffer.noChannels;
 
-    int32_t  a1, a2, a3;
-    uint32_t stride = platform.colorBuffer.width * platform.colorBuffer.noChannels;
+    const SIMD::Vec4ss TexA_simd = SIMD::Vec4ss(texA.x, texA.y, 0.0f, 0.0f);
+    const SIMD::Vec4ss TexB_simd = SIMD::Vec4ss(texB.x, texB.y, 0.0f, 0.0f);
+    const SIMD::Vec4ss TexC_simd = SIMD::Vec4ss(texC.x, texC.y, 0.0f, 0.0f);
 
+    // Parallelization using SIMD vectorization
+    float a1, a2, a3;
     // Code duplication better than per pixel check
-    if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::TEXTURE_MODE)
+    // if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::TEXTURE_MODE)
     {
         // My optimized rasterization
-        auto texture = Device.Context.GetActiveTexture();
+        // auto texture = Device.Context.GetActiveTexture();
         for (size_t h = minY; h <= maxY; ++h)
-        {/*
-            size_t offset =
-                (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
-            mem = platform.colorBuffer.buffer + offset;
-            mem = mem + minX * platform.colorBuffer.noChannels;*/
+        { /*
+             size_t offset =
+                 (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width *
+     platform.colorBuffer.noChannels;
+             mem = platform.colorBuffer.buffer + offset;
+             mem = mem + minX * platform.colorBuffer.noChannels;*/
 
-            a1  = a1_;
-            a2  = a2_;
-            a3  = a3_;
+            a1 = a1_;
+            a2 = a2_;
+            a3 = a3_;
 
             // This is a very tight loop and need to be optimized heavily even for a suitable framerate
             for (size_t w = minX; w <= maxX; ++w)
             {
-                if ((a1 | a2 | a3) >= 0 ||
+                if ((a1 >= 0 && a2 >= 0 && a3 >= 0) ||
                     (a1 <= 0 && a2 <= 0 && a3 <= 0)) // --> Turns on rasterization of anti clockwise triangles
                 {
 
-                    l1 = static_cast<float>(a2) / area;
-                    l2 = static_cast<float>(a3) / area;
-                    l3 = static_cast<float>(a1) / area;
+                    // l1 = static_cast<float>(a2) / area;
+                    // l2 = static_cast<float>(a3) / area;
+                    // l3 = static_cast<float>(a1) / area;
 
-                    // Z is interpolated linearly in this space, due to perspective division that already occured
-                    float z     = l1 * z0 + l2 * z1 + l3 * z2;
+                    //// Z is interpolated linearly in this space, due to perspective division that already occured
+                    // float z     = l1 * z0 + l2 * z1 + l3 * z2;
 
-                    l1          = l1 * inv_w0;
-                    l2          = l2 * inv_w1;
-                    l3          = l3 * inv_w2;
+                    // l1          = l1 * inv_w0;
+                    // l2          = l2 * inv_w1;
+                    // l3          = l3 * inv_w2;
 
-                    auto  uv    = (l1 * texA + l2 * texB + l3 * texC) * (1.0f / (l1 + l2 + l3));
-                    auto &depth = platform.zBuffer.buffer[h * platform.zBuffer.width + w];
+                    // auto  uv    = (l1 * texA + l2 * texB + l3 * texC) * (1.0f / (l1 + l2 + l3));
+                    // auto &depth = platform.zBuffer.buffer[h * platform.zBuffer.width + w];
 
-                    if (z < depth)
+                    if (1)
                     {
                         // Interpolate the depth perspective correctly
-                        auto rgb = texture.Sample(Vec2(uv), Texture::Interpolation::NEAREST);
-                        depth    = z;
+                        /*auto rgb = texture.Sample(Vec2(uv), Texture::Interpolation::NEAREST);
+                        depth    = z;*/
 
                         // only calculate mem now if depth test actually passed
 
                         size_t offset = (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width *
                                         platform.colorBuffer.noChannels;
-                        mem = platform.colorBuffer.buffer + offset + w * platform.colorBuffer.noChannels;
-         
-                        
-                        mem[0]   = rgb.z;
-                        mem[1]   = rgb.y;
-                        mem[2]   = rgb.x;
-                        mem[3]   = 0x00;
+                        mem    = platform.colorBuffer.buffer + offset + w * platform.colorBuffer.noChannels;
+
+                        mem[0] = 0xFF;
+                        mem[1] = 0;
+                        mem[2] = 0;
+                        mem[3] = 0x00;
                     }
                 }
-                a1  = a1 + v0.y;
-                a2  = a2 + v1.y;
-                a3  = a3 + v2.y;
+                a1 = a1 + v0.y;
+                a2 = a2 + v1.y;
+                a3 = a3 + v2.y;
                 // mem = mem + 4;
             }
             a1_ = a1_ - v0.x;
@@ -709,65 +967,94 @@ void Rasteriser(int32_t x0, int32_t y0, float z0, float inv_w0, int32_t x1, int3
             a3_ = a3_ - v2.x;
         }
     }
-    else if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::COLOR_MODE) // depth mode say 
-    {
-        for (size_t h = minY; h <= maxY; ++h)
-        {
-            size_t offset =
-                (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
-            mem = platform.colorBuffer.buffer + offset;
-            mem = mem + minX * platform.colorBuffer.noChannels;
+    // }
+    // if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::TEXTURE_MODE)
+    //{
+    //    // My optimized rasterization
+    //    auto texture = Device.Context.GetActiveTexture();
+    //    for (size_t h = minY; h <= maxY; ++h)
+    //    {
+    //        size_t offset =
+    //            (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
+    //        mem = platform.colorBuffer.buffer + offset;
+    //        mem = mem + minX * platform.colorBuffer.noChannels;
 
-            a1  = a1_;
-            a2  = a2_;
-            a3  = a3_;
+    //        a   = a_;
+    //        // This is a very tight loop and need to be optimized heavily even for a suitable framerate
+    //        for (size_t w = minX; w <= maxX; ++w)
+    //        {
+    //            if (a.compare_f3_greater_eq_than_zero() || a.compare_f3_lesser_eq_than_zero()) // Replace this in
+    //            // SIMD version
+    //            {
+    //                l         = a.swizzle_for_barycentric() * (1.0f / area);
+    //                auto z    = l.dot(z_vec);
+    //                l         = l * inv_w;
+    //                auto  sum = l.dot(SIMD::Vec4ss(1.0f, 1.0f, 1.0f, 0.0f));
 
-            // This is a very tight loop and need to be optimized heavily even for a suitable framerate
-            for (size_t w = minX; w <= maxX; ++w)
-            {
-                if ((a1 | a2 | a3) >= 0 ||
-                    (a1 <= 0 && a2 <= 0 && a3 <= 0)) // --> Turns on rasterization of anti clockwise triangles
-                {
+    //                float a[4];
+    //                _mm_store_ps(a, l.vec);
+    //                auto  uv    = (a[3] * texA + a[2] * texB + a[1] * texC) * (1.0f / sum);
 
-                    l1 = static_cast<float>(a2) / area;
-                    l2 = static_cast<float>(a3) / area;
-                    l3 = static_cast<float>(a1) / area;
+    //                /*
+    //                auto  uv    = (TexA_simd * a[3] + TexB_simd * a[2] + TexC_simd * a[1]) * (1.0f / sum);
+    //                _mm_store_ps(a, uv.vec);*/
 
-                    //// Z is interpolated linearly in this space, due to perspective division that already occured
-                    float z     = l1 * z0 + l2 * z1 + l3 * z2;
+    //                auto &depth = platform.zBuffer.buffer[h * platform.zBuffer.width + w];
+    //                if (z < depth)
+    //                {
+    //                    auto rgb = texture.Sample(Vec2(uv), Texture::Interpolation::NEAREST);
+    //                    depth    = z;
+    //                    mem[0]   = rgb.z;
+    //                    mem[1]   = rgb.y;
+    //                    mem[2]   = rgb.x;
+    //                    mem[3]   = 0x00;
+    //                }
+    //            }
+    //            a   = a + inc_ry;
+    //            mem = mem + 4;
+    //        }
+    //        a_ = a_ - inc_rx;
+    //    }
+    //}
+    // else if (Device.Context.ActiveMergeMode == RenderDevice::MergeMode::COLOR_MODE) // depth mode say
+    //{
+    //    // TODO :: Tile based rendering
+    //    for (size_t h = minY; h <= maxY; ++h)
+    //    {
+    //        size_t offset =
+    //            (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width * platform.colorBuffer.noChannels;
+    //        mem = platform.colorBuffer.buffer + offset;
+    //        mem = mem + minX * platform.colorBuffer.noChannels;
 
-                    l1          = l1 * inv_w0;
-                    l2          = l2 * inv_w1;
-                    l3          = l3 * inv_w2;
-
-                    auto &depth = platform.zBuffer.buffer[h * platform.zBuffer.width + w];
-
-                    if (z < depth)
-                    {
-                        // Interpolate the depth perspective correctly
-                        depth    = z;
-
-
-                        mem[0]   = z * 255;
-                        mem[1]   = z * 255;
-                        mem[2]   = z * 255;
-                        mem[3]   = 0x00;
-                    }
-                }
-                a1  = a1 + v0.y;
-                a2  = a2 + v1.y;
-                a3  = a3 + v2.y;
-                mem = mem + 4;
-            }
-            a1_ = a1_ - v0.x;
-            a2_ = a2_ - v1.x;
-            a3_ = a3_ - v2.x;
-        }
-    }
-    else
-    {
-    // Don't do anything here 
-    }
+    //        a   = a_;
+    //        // This is a very tight loop and need to be optimized heavily even for a suitable framerate
+    //        for (size_t w = minX; w <= maxX; ++w)
+    //        {
+    //            if (a.compare_f3_greater_eq_than_zero()) // Replace this in SIMD version
+    //            {
+    //                l           = a.swizzle_for_barycentric() * (1.0f / area);
+    //                auto z      = l.dot(z_vec);
+    //                l           = l * inv_w;
+    //                auto &depth = platform.zBuffer.buffer[h * platform.zBuffer.width + w];
+    //                if (z < depth)
+    //                {
+    //                    depth  = z;
+    //                    mem[0] = z * 255;
+    //                    mem[1] = z * 255;
+    //                    mem[2] = z * 255;
+    //                    mem[3] = 0x00;
+    //                }
+    //            }
+    //            a   = a + inc_ry;
+    //            mem = mem + 4;
+    //        }
+    //        a_ = a_ - inc_rx;
+    //    }
+    //}
+    // else
+    //{
+    //    // Don't do anything here
+    //}
 }
 
 void ScreenSpace(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
@@ -777,14 +1064,15 @@ void ScreenSpace(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
     // It must pass through 2D clipping though .. lets see what happens
 
     Platform platform = GetCurrentPlatform();
-    int      x0       = static_cast<int>((platform.width - 1) / 2 * (v0.Position.x + 1) + 0.5f);
-    int      y0       = static_cast<int>((platform.height - 1) / 2 * (1 + v0.Position.y) + 0.5f);
+    int      width_h  = (platform.width - 1) / 2;
+    int      height_h = (platform.height - 1) / 2;
+    int      x0       = static_cast<int>(width_h * (v0.Position.x + 1));
+    int      x1       = static_cast<int>(width_h * (v1.Position.x + 1));
+    int      x2       = static_cast<int>(width_h * (v2.Position.x + 1));
 
-    int      x1       = static_cast<int>((platform.width - 1) / 2 * (v1.Position.x + 1) + 0.5f);
-    int      y1       = static_cast<int>((platform.height - 1) / 2 * (1 + v1.Position.y) + 0.5f);
-
-    int      x2       = static_cast<int>((platform.width - 1) / 2 * (v2.Position.x + 1) + 0.5f);
-    int      y2       = static_cast<int>((platform.height - 1) / 2 * (1 + v2.Position.y) + 0.5f);
+    int      y0       = static_cast<int>(height_h * (1 + v0.Position.y));
+    int      y1       = static_cast<int>(height_h * (1 + v1.Position.y));
+    int      y2       = static_cast<int>(height_h * (1 + v2.Position.y));
 
     float    z0       = v0.Position.z;
     float    z1       = v1.Position.z;
@@ -793,11 +1081,27 @@ void ScreenSpace(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2)
     // if (z0 == 0.0f || z1 == 0.0f || z2 == 0.0f)
     //    __debugbreak();
 
-    Rasteriser(x0, y0, z0, v0.Position.w, x1, y1, z1, v1.Position.w, x2, y2, z2, v2.Position.w, v0.Color, v1.Color,
-               v2.Color, v0.TexCoord, v1.TexCoord, v2.TexCoord);
+    /* Rasteriser(x0, y0, z0, v0.Position.w, x1, y1, z1, v1.Position.w, x2, y2, z2, v2.Position.w, v0.Color, v1.Color,
+              v2.Color, v0.TexCoord, v1.TexCoord, v2.TexCoord);*/
+    /*ORasteriser(x0, y0, z0, v0.Position.w, x1, y1, z1, v1.Position.w, x2, y2, z2, v2.Position.w, v0.Color, v1.Color,
+                v2.Color, v0.TexCoord, v1.TexCoord, v2.TexCoord);*/
+
+    // With raster info struct now
+    RasterInfo rs0(x0, y0, z0, v0.Position.w, v0.TexCoord, v0.Color);
+    RasterInfo rs1(x1, y1, z1, v1.Position.w, v1.TexCoord, v1.Color);
+    RasterInfo rs2(x2, y2, z2, v2.Position.w, v2.TexCoord, v2.Color);
+
+    // Run all threads parallely from here
+    // parameterized by rs0,rs1 and rs2
+    //// Parallel::ParallelRasteriser(rs0,rs1,rs2);
+    //auto &thread_pool = get_current_thread_pool();
+    //auto &renderer    = get_current_parallel_renderer();
+    // Use the parallel renderer to render all sections in parallel using above thread_pool
+    // renderer.parallel_rasterize(thread_pool, rs0, rs1, rs2);
+    // wait until all worker thread have been completed
 }
 
-void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, MemAlloc<VertexAttrib3D> const& allocator)
+void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, MemAlloc<VertexAttrib3D> const &allocator)
 {
     v0.Position = v0.Position.PerspectiveDivide();
     v1.Position = v1.Position.PerspectiveDivide();
@@ -808,10 +1112,10 @@ void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, MemAll
 
     std::vector<VertexAttrib3D> inVertices{};
     inVertices.reserve(5);*/
-    std::vector<VertexAttrib3D, MemAlloc<VertexAttrib3D>> outVertices(allocator); 
-    outVertices.push_back(v0);
+    std::vector<VertexAttrib3D, MemAlloc<VertexAttrib3D>> outVertices({v0, v1, v2}, allocator);
+    /*outVertices.push_back(v0);
     outVertices.push_back(v1);
-    outVertices.push_back(v2);
+    outVertices.push_back(v2);*/
     auto       inVertices = outVertices;
 
     auto const clipPoly =
@@ -837,7 +1141,7 @@ void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, MemAll
 
         for (size_t i = 0; i < inVertices.size(); ++i)
         {
-            auto v0 = inVertices.at(i), v1 = inVertices.at((i + 1) % inVertices.size());
+            auto const& v0 = inVertices.at(i), v1 = inVertices.at((i + 1) % inVertices.size());
 
             auto head = Vec2<float>::Determinant(line, Vec2f(v1.Position.x, v1.Position.y) - clipPoly[vert]) >= 0;
             auto tail = Vec2<float>::Determinant(line, Vec2f(v0.Position.x, v0.Position.y) - clipPoly[vert]) >= 0;
@@ -911,9 +1215,7 @@ void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, MemAll
     }
 
     if (outVertices.size() < 3)
-    {
         return;
-    }
 
     for (int vertex = 1; vertex < outVertices.size() - 1; vertex += 1)
     {
@@ -947,14 +1249,11 @@ void Clip3D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
         return;
     // std::cout << "Triangle does not lie fully outside the clipping boundary" << std::endl;
 
-    // Replace these vectors 
+    // Replace these vectors
     // std::vector<VertexAttrib3D> inVertices{v0, v1, v2};
     // std::vector<VertexAttrib3D> outVertices = inVertices;
-    std::vector<VertexAttrib3D, MemAlloc<VertexAttrib3D>> inVertices(allocator);
-    inVertices.push_back(v0);
-    inVertices.push_back(v1);
-    inVertices.push_back(v2);
-    auto outVertices = inVertices;
+    std::vector<VertexAttrib3D, MemAlloc<VertexAttrib3D>> inVertices({v0, v1, v2}, allocator);
+    auto                                                  outVertices = inVertices;
 
     if (v0.Position.z < 0 || v1.Position.z < 0 || v2.Position.z < 0)
     {
@@ -962,8 +1261,8 @@ void Clip3D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
         for (int i = 0; i < inVertices.size(); ++i)
         {
             //  __debugbreak();
-            auto v0   = inVertices.at(i);
-            auto v1   = inVertices.at((i + 1) % inVertices.size());
+            auto const& v0   = inVertices.at(i);
+            auto const& v1   = inVertices.at((i + 1) % inVertices.size());
             bool head = v1.Position.z >= 0.0f;
             // std::numeric_limits<float>::epsilon();
             bool tail = v0.Position.z >= 0.0f;
@@ -991,7 +1290,8 @@ void Clip3D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
     for (int vertex = 1; vertex < outVertices.size() - 1; vertex += 1)
     {
         // ScreenSpace(outVertices.at(0), outVertices.at(vertex), outVertices.at((vertex + 1) % outVertices.size()));
-        ClipSpace2D(outVertices.at(0), outVertices.at(vertex), outVertices.at((vertex + 1) % outVertices.size()), allocator);
+        ClipSpace2D(outVertices.at(0), outVertices.at(vertex), outVertices.at((vertex + 1) % outVertices.size()),
+                    allocator);
     }
 }
 // First thing, vertex transform
@@ -1027,7 +1327,10 @@ void Draw(std::vector<VertexAttrib3D> &vertex_vector, std::vector<uint32_t> cons
     assert(index_vector.size() % 3 == 0);
 
     // TODO :: Parallelize this loop
+    // Parallelism should start from here 
     VertexAttrib3D v0, v1, v2;
+    // Run the whole pipeline simultaneously on multiple threads
+
     for (std::size_t i = 0; i < index_vector.size(); i += 3)
     {
         allocator.resource->reset();
@@ -1039,7 +1342,7 @@ void Draw(std::vector<VertexAttrib3D> &vertex_vector, std::vector<uint32_t> cons
         v1.Position = matrix * v1.Position;
         v2.Position = matrix * v2.Position;
 
-        Clip3D(v0, v1, v2,allocator);
+        Clip3D(v0, v1, v2, allocator);
     }
 }
 } // namespace Pipeline3D

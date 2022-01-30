@@ -53,11 +53,10 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     SIMD::Vec4ss zvec(v0.z / area, v1.z / area, v2.z / area, 0.0f);
     // zvec = zvec;
     // Now processing downwards
-
+    auto          inv_w     = SIMD::Vec4ss(v0.inv_w / area, v1.inv_w / area, v2.inv_w / area, 0.0f);
     constexpr int hStepSize = 4;
     if (Device->Context.ActiveMergeMode == RenderDevice::MergeMode::COLOR_MODE)
     {
-
         for (size_t h = minY; h <= maxY; ++h)
         {
             a1 = a1_vec;
@@ -89,69 +88,98 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                     auto lvec3 = Vec4ss(_mm_movehl_ps(c, d));
                     auto lvec4 = Vec4ss(_mm_movelh_ps(d, c));
 
-                    lvec1      = Vec4ss(_mm_shuffle_ps(lvec1.vec, lvec1.vec, _MM_SHUFFLE(2, 1, 3, 0))) * (1.0 / area);
-                    lvec2      = Vec4ss(_mm_shuffle_ps(lvec2.vec, lvec2.vec, _MM_SHUFFLE(2, 1, 3, 0))) * (1.0 / area);
-                    lvec3      = Vec4ss(_mm_shuffle_ps(lvec3.vec, lvec3.vec, _MM_SHUFFLE(2, 1, 3, 0))) * (1.0 / area);
-                    lvec4      = Vec4ss(_mm_shuffle_ps(lvec4.vec, lvec4.vec, _MM_SHUFFLE(2, 1, 3, 0))) * (1.0 / area);
+                    lvec1      = Vec4ss(_mm_shuffle_ps(lvec1.vec, lvec1.vec, _MM_SHUFFLE(2, 1, 3, 0)));
+                    lvec2      = Vec4ss(_mm_shuffle_ps(lvec2.vec, lvec2.vec, _MM_SHUFFLE(2, 1, 3, 0)));
+                    lvec3      = Vec4ss(_mm_shuffle_ps(lvec3.vec, lvec3.vec, _MM_SHUFFLE(2, 1, 3, 0)));
+                    lvec4      = Vec4ss(_mm_shuffle_ps(lvec4.vec, lvec4.vec, _MM_SHUFFLE(2, 1, 3, 0)));
                     if (mask & 0x08)
                     {
                         // plot first pixel
                         // calculate z
 
-                        float z = lvec4.dot(zvec);
+                        float z        = lvec1.dot(zvec);
+                        lvec1          = lvec1 * inv_w;
+                        auto  bary_sum = lvec1.dot(Vec4ss(1.0f, 1.0f, 1.0f, 0.0f));
+
+                        float a[4];
+                        _mm_store_ps(a, lvec1.vec);
                         if (z < depth[0])
                         {
+                            auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
+                            // sample texture
                             depth[0] = z;
-                            mem[0]   = z * 255;
-                            mem[1]   = z * 255;
-                            mem[2]   = z * 255;
-                            mem[3]   = 0x00;
+                            mem[0]   = rgb.z * 255;
+                            mem[1]   = rgb.y * 255;
+                            mem[2]   = rgb.x * 255;
+                            mem[3]   = rgb.w * 255;
                         }
                     }
+
                     if (mask & 0x04)
                     {
                         // plot second pixel
-                        mem     = off + 4;
+                        mem            = off + 4;
 
-                        float z = lvec3.dot(zvec);
+                        float z        = lvec2.dot(zvec);
+                        lvec2          = lvec2 * inv_w;
+                        auto  bary_sum = lvec2.dot(Vec4ss(1.0f, 1.0f, 1.0f, 0.0f));
+
+                        float a[4];
+                        _mm_store_ps(a, lvec2.vec);
+
                         if (z < depth[1])
                         {
+                            // sample texture
+                            auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
                             depth[1] = z;
-
-                            mem[0]   = z * 255;
-                            mem[1]   = z * 255;
-                            mem[2]   = z * 255;
-                            mem[3]   = 0x00;
+                            mem[0]   = rgb.z * 255;
+                            mem[1]   = rgb.y * 255;
+                            mem[2]   = rgb.x * 255;
+                            mem[3]   = rgb.w * 255;
                         }
                     }
                     if (mask & 0x02)
                     {
                         // plot third pixel
-                        mem     = off + 8;
+                        mem            = off + 8;
+                        float z        = lvec3.dot(zvec);
+                        lvec3          = lvec3 * inv_w;
+                        auto  bary_sum = lvec3.dot(Vec4ss(1.0f, 1.0f, 1.0f, 0.0f));
 
-                        float z = lvec2.dot(zvec);
+                        float a[4];
+                        _mm_store_ps(a, lvec3.vec);
+
                         if (z < depth[2])
                         {
-                            depth[2] = z;
+                            // sample texture
+                            auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
 
-                            mem[0]   = z * 255;
-                            mem[1]   = z * 255;
-                            mem[2]   = z * 255;
+                            depth[2] = z;
+                            mem[0]   = rgb.z * 255;
+                            mem[1]   = rgb.y * 255;
+                            mem[2]   = rgb.x * 255;
                             mem[3]   = 0x00;
                         }
                     }
                     if (mask & 0x01)
                     {
                         // plot fourth pixel
-                        mem     = off + 12;
+                        mem            = off + 12;
+                        float z        = lvec4.dot(zvec);
+                        lvec4          = lvec4 * inv_w;
+                        auto  bary_sum = lvec4.dot(Vec4ss(1.0f, 1.0f, 1.0f, 0.0f));
 
-                        float z = lvec1.dot(zvec);
+                        float a[4];
+                        _mm_store_ps(a, lvec4.vec);
+
                         if (z < depth[3])
                         {
+                            // sample texture
+                            auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
                             depth[3] = z;
-                            mem[0]   = z * 255;
-                            mem[1]   = z * 255;
-                            mem[2]   = z * 255;
+                            mem[0]   = rgb.z * 255;
+                            mem[1]   = rgb.y * 255;
+                            mem[2]   = rgb.x * 255;
                             mem[3]   = 0x00;
                         }
                     }
@@ -168,7 +196,7 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     }
     else
     {
-        auto inv_w   = SIMD::Vec4ss(v0.inv_w / area, v1.inv_w / area, v2.inv_w / area, 0.0f);
+        // auto inv_w   = SIMD::Vec4ss(v0.inv_w / area, v1.inv_w / area, v2.inv_w / area, 0.0f);
         auto texture = GetActiveTexture();
         for (size_t h = minY; h <= maxY; ++h)
         {
@@ -428,6 +456,9 @@ static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
 
                     inter.TexCoord    = (t * v1.TexCoord + one_minus_t * v0.TexCoord);
                     inter.TexCoord    = inter.TexCoord * (1.0f / (t + one_minus_t));
+
+                    inter.Color       = (t * v1.Color + one_minus_t * v0.Color);
+                    inter.Color       = inter.Color * (1.0f / (t + one_minus_t));
                 }
                 else
                 {
@@ -444,6 +475,9 @@ static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
 
                     inter.TexCoord    = (t * v1.TexCoord + one_minus_t * v0.TexCoord);
                     inter.TexCoord    = inter.TexCoord * (1.0f / (t + one_minus_t));
+
+                    inter.Color       = (t * v1.Color + one_minus_t * v0.Color);
+                    inter.Color       = inter.Color * (1.0f / (t + one_minus_t));
                 }
                 // Nothing done here .. Might revisit during texture mapping phase
                 // TODO -> Handle cases
@@ -471,7 +505,7 @@ static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
 static void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAttrib3D const &v2,
                    MemAlloc<Pipeline3D::VertexAttrib3D> &allocator, int32_t XMinBound, int32_t XMaxBound)
 {
-    // TODO :: SIMDify this 
+    // TODO :: SIMDify this
     if (v0.Position.z > v0.Position.w && v1.Position.z > v1.Position.w && v2.Position.z > v2.Position.w)
         return;
     if (v0.Position.x < -v0.Position.w && v1.Position.x < -v1.Position.w && v2.Position.x < -v2.Position.w)
@@ -515,6 +549,7 @@ static void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAtt
                 vn.Position = pn;
 
                 vn.TexCoord = v0.TexCoord + t * (v1.TexCoord - v0.TexCoord);
+                vn.Color    = v0.Color + t * (v1.Color - v0.Color);
                 outVertices.push_back(vn);
                 if (head)
                     outVertices.push_back(v1);
@@ -530,45 +565,43 @@ static void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAtt
     }
 }
 
-static void Draw(std::vector<VertexAttrib3D> const &vertex_vector, std::vector<uint32_t> const &index_vector,
-                 Mat4f const &matrix, MemAlloc<Pipeline3D::VertexAttrib3D> &allocator, int32_t XMinBound,
-                 int32_t XMaxBound)
+static void ParallelRenderableDraw(RenderList &renderables, MemAlloc<Pipeline3D::VertexAttrib3D> &allocator,
+                                   int32_t XMinBound, int32_t XMaxBound)
 {
-    assert(index_vector.size() % 3 == 0);
 
     VertexAttrib3D v0, v1, v2;
     // Run the whole pipeline simultaneously on multiple threads
-
-    for (std::size_t i = 0; i < index_vector.size(); i += 3)
+    auto device = GetRasteriserDevice();
+    for (auto const &renderable : renderables.Renderables)
     {
-        allocator.resource->reset();
-        v0          = vertex_vector[index_vector[i]];
-        v1          = vertex_vector[index_vector[i + 1]];
-        v2          = vertex_vector[index_vector[i + 2]];
+        device->Context.ActiveMergeMode = renderable.merge_mode;
+        if (renderable.merge_mode == RenderDevice::MergeMode::TEXTURE_MODE)
+            SetActiveTexture(renderable.textureID);
+        assert(renderable.indices.size() % 3 == 0);
+        for (std::size_t i = 0; i < renderable.indices.size(); i += 3)
+        {
+            allocator.resource->reset();
+            v0          = renderable.vertices[renderable.indices[i]];
+            v1          = renderable.vertices[renderable.indices[i + 1]];
+            v2          = renderable.vertices[renderable.indices[i + 2]];
 
-        v0.Position = matrix * v0.Position;
-        v1.Position = matrix * v1.Position;
-        v2.Position = matrix * v2.Position;
+            v0.Position = renderable.scene_transform * v0.Position;
+            v1.Position = renderable.scene_transform * v1.Position;
+            v2.Position = renderable.scene_transform * v2.Position;
 
-        Parallel::Clip3D(v0, v1, v2, allocator, XMinBound, XMaxBound);
+            Parallel::Clip3D(v0, v1, v2, allocator, XMinBound, XMaxBound);
+        }
     }
 }
 
-static void ParallelDraw(std::vector<VertexAttrib3D> const &vertex_vector, std::vector<uint32_t> const &index_vector,
-                         Mat4f const &matrix, MemAlloc<Pipeline3D::VertexAttrib3D> &allocator, int32_t XMinBound,
-                         int32_t XMaxBound)
-{
-    Parallel::Draw(vertex_vector, index_vector, matrix, allocator, XMinBound, XMaxBound);
-}
-
 // Try packing all these arguments
-
 void ParallelTypeErasedDraw(void *arg)
 {
     // Retrieve back the type erased information
     auto drawArgs = static_cast<Parallel::ParallelRenderer::ParallelThreadArgStruct *>(arg);
-    ParallelDraw(*drawArgs->vertex_vector, *drawArgs->index_vector, *drawArgs->matrix, *drawArgs->allocator,
-                 drawArgs->XMinBound, drawArgs->XMaxBound);
+    /*ParallelDraw(*drawArgs->vertex_vector, *drawArgs->index_vector, *drawArgs->matrix, *drawArgs->allocator,
+                 drawArgs->XMinBound, drawArgs->XMaxBound);*/
+    ParallelRenderableDraw(*drawArgs->render_list, *drawArgs->allocator, drawArgs->XMinBound, drawArgs->XMaxBound);
 }
 
 // Parallel Renderer class definition
@@ -586,41 +619,9 @@ ParallelRenderer::ParallelRenderer(const int width, const int height)
     boundary[no_of_partitions] = width;
 }
 
-void ParallelRenderer::ParallelPipeline(ThreadPool                                    &thread_pool,
-                                        std::vector<Pipeline3D::VertexAttrib3D> const &vertex_vector,
-                                        std::vector<uint32_t> const &index_vector, Mat4f const &matrix,
-                                        std::vector<MemAlloc<Pipeline3D::VertexAttrib3D>> &allocator)
-{
-    std::latch waiter(no_of_partitions);
-    thread_pool.started(&waiter);
-    // Allocate objects on the stack
-    ParallelThreadArgStruct args[no_of_partitions];
-
-    for (auto i : std::ranges::iota_view(1u, no_of_partitions + 1))
-    {
-        args[i - 1] = ParallelThreadArgStruct(&vertex_vector, &index_vector, &matrix, &allocator[i], boundary[i - 1],
-                                              boundary[i]);
-        /*    thread_pool.add_task(std::bind(&Parallel::ParallelDraw, std::cref(vertex_vector),
-           std::cref(index_vector), std::cref(matrix), std::ref(allocator[i]), boundary[i - 1], boundary[i]));
-       */
-        thread_pool.add_task(ThreadPool::ThreadPoolFunc(
-            Parallel::ParallelTypeErasedDraw,
-            static_cast<void *>(&args[i - 1]))); // Prepare rasteriser to take type erased argument
-    }
-    // while (thread_pool.finished() != no_of_partitions)
-    //{
-    //     // using namespace std::chrono;
-    //     // std::this_thread::sleep_for(0.001s);
-    // };
-    thread_pool.wait_till_finished();
-    for (auto &alloc : allocator)
-        alloc.resource->reset();
-}
-
-void ParallelRenderer::AlternativeParallelPipeline(Alternative::ThreadPool                       &thread_pool,
-                                                   std::vector<Pipeline3D::VertexAttrib3D> const &vertex_vector,
-                                                   std::vector<uint32_t> const &index_vector, Mat4f const &matrix,
-                                                   std::vector<MemAlloc<Pipeline3D::VertexAttrib3D>> &allocator)
+void ParallelRenderer::AlternativeParallelRenderablePipeline(
+    Alternative::ThreadPool &thread_pool, RenderList &renderables,
+    std::vector<MemAlloc<Pipeline3D::VertexAttrib3D>> &allocator)
 {
     std::latch waiter(no_of_partitions);
     // Allocate objects on the stack
@@ -628,16 +629,17 @@ void ParallelRenderer::AlternativeParallelPipeline(Alternative::ThreadPool      
 
     for (auto i : std::ranges::iota_view(1u, no_of_partitions + 1))
     {
-        args[i - 1] = ParallelThreadArgStruct(&vertex_vector, &index_vector, &matrix, &allocator[i], boundary[i - 1],
-                                              boundary[i]);
+        args[i - 1] = ParallelThreadArgStruct(&renderables, &allocator[i], boundary[i - 1], boundary[i]);
     }
 
     // operate on passive ptr here
     auto count = 0u;
     for (auto &task : *thread_pool.get_passive_ptr())
     {
-        task = Alternative::ThreadPool::AlternativeTaskDesc{
-            false, Alternative::ThreadPool::ThreadPoolFunc(Parallel::ParallelTypeErasedDraw, &args[count++])};
+        /*task = Alternative::ThreadPool::AlternativeTaskDesc{
+            false, Alternative::ThreadPool::ThreadPoolFunc(Parallel::ParallelTypeErasedDraw, &args[count++])};*/
+        task.completed = false;
+        task.task      = Alternative::ThreadPool::ThreadPoolFunc(Parallel::ParallelTypeErasedDraw, &args[count++]);
     }
 
     thread_pool.started(&waiter);

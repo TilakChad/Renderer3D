@@ -1,5 +1,6 @@
 #pragma once
 #include "../include/rasteriser.h"
+#include "../include/render.h"
 #include "./thread_pool.h"
 
 namespace Parallel
@@ -14,7 +15,7 @@ class ParallelRenderer
     // Each time screen buffer changes ParallelRendered need to be remodified
     // Only the rasteriser stage will be parallelized for now
     // I guess it should take thread pool as input to initiate parallel operation during Rasterisation
-    constexpr static uint32_t no_of_partitions = 4; // or number of threads
+    constexpr static uint32_t no_of_partitions = 6; // or number of threads
     enum class PartitionType
     {
         HORIZONTAL,
@@ -39,12 +40,13 @@ class ParallelRenderer
     struct ParallelThreadArgStruct
     {
         // vertex index
-        const std::vector<Pipeline3D::VertexAttrib3D> *vertex_vector;
-        const std::vector<uint32_t>                   *index_vector;
-        const Mat4f                                   *matrix;
-        MemAlloc<Pipeline3D::VertexAttrib3D>          *allocator;
-        int32_t                                        XMinBound;
-        int32_t                                        XMaxBound;
+        // const std::vector<Pipeline3D::VertexAttrib3D> *vertex_vector;
+        // const std::vector<uint32_t>                   *index_vector;
+        // const Mat4f                                   *matrix;
+        RenderList                           *render_list;
+        MemAlloc<Pipeline3D::VertexAttrib3D> *allocator;
+        int32_t                               XMinBound;
+        int32_t                               XMaxBound;
     };
 
     ParallelRenderer() = default;
@@ -70,5 +72,8 @@ class ParallelRenderer
     {
         return std::all_of(completed_rendering, completed_rendering + 4, [](bool x) { return x; });
     }
+
+    void AlternativeParallelRenderablePipeline(Alternative::ThreadPool &thread_pool, RenderList &renderables,
+                                               std::vector<MemAlloc<Pipeline3D::VertexAttrib3D>> &allocator);
 };
 } // namespace Parallel
