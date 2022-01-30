@@ -1,7 +1,10 @@
 #pragma once
 
+#include "../image/PNGLoader.h"
 #include "../maths/vec.hpp"
+#include "./platform.h"
 #include <cstdint>
+#include <format>
 
 struct Texture
 {
@@ -41,7 +44,7 @@ struct Texture
                                                     {1, 0},   {-1, 1}, {0, 1},  {1, 1}};
     };
 
-    Vec3u8   Sample(Vec2f uv, Interpolation type = Interpolation::NEAREST);
+    Vec3u8 Sample(Vec2f uv, Interpolation type = Interpolation::NEAREST);
 
     // <-- Returns the Gaussian Blurred image of the currently holding texture .. Will allocate
 
@@ -56,10 +59,8 @@ struct Texture
                    uint32_t target_width, uint32_t target_height);
 };
 
-
 // Lmao .. static linkage fiasco ... This method is unique but ...
-template <typename T> 
-inline uint8_t *Texture::Convolve(T kernel) requires requires
+template <typename T> inline uint8_t *Texture::Convolve(T kernel) requires requires
 {
     kernel.kernel;
 }
@@ -100,3 +101,79 @@ inline uint8_t *Texture::Convolve(T kernel) requires requires
     }
     return gaussian;
 }
+
+// Naive updating of Background Texture
+
+struct BackgroundTexture
+{
+    // Frame data
+    // Do nearest neighborhood interpolation to swap out the color buffer,
+    Texture  texture;
+
+    uint32_t cbuffer_width;
+    uint32_t cbuffer_height;
+    uint32_t cbuffer_channels;
+
+    uint8_t *raw_bckg_data = nullptr;
+
+    void     CreateBackgroundTexture(std::string_view image_path)
+    {
+        texture.raw_data =
+            LoadPNGFromFile(image_path.data(), &texture.width, &texture.height, &texture.channels, &texture.bit_depth);
+        std::cerr << std::format("Loaded PNG {}, width : {}, height :{}\n", image_path.data(), texture.width,
+                                 texture.height)
+                  << std::endl;
+    }
+
+    void SampleForCurrentFrameBuffer(Platform *platform, bool applyGaussianBlur)
+    {
+        if (raw_bckg_data)
+            delete[] raw_bckg_data;
+
+        cbuffer_channels    = platform->colorBuffer.noChannels;
+        cbuffer_width       = platform->colorBuffer.width;
+        cbuffer_height      = platform->colorBuffer.height;
+
+        uint8_t *sampleData = texture.raw_data;
+        raw_bckg_data       = new uint8_t[cbuffer_width * cbuffer_height * cbuffer_channels];
+
+        // Now sample the image from above texture using Nearest Interpolation
+        auto mem = raw_bckg_data;
+        for (int h = 0; h < cbuffer_height; ++h)
+        {
+            uint32_t y = h * texture.height / cbuffer_height;
+            for (int w = 0; w < cbuffer_width; ++w)
+            {
+                // Simple linear mapping
+                uint32_t x = w * texture.width / cbuffer_width;
+                // std::memcpy(mem, texture.raw_data + (y * texture.width + x) * texture.channels, sizeof(uint8_t) *
+                // cbuffer_channels);
+                auto raw = sampleData + (y * texture.width + x) * texture.channels;
+                mem[0]   = raw[2];
+                mem[1]   = raw[1];
+                mem[2]   = raw[0];
+                mem[3]   = raw[3];
+                mem += cbuffer_channels;
+            }
+        }
+
+        if (applyGaussianBlur)
+        {
+            // use the result above to apply gaussian blue several times
+            Texture blur;
+            blur.bit_depth              = texture.bit_depth;
+            blur.channels               = cbuffer_channels;
+            blur.width                  = cbuffer_width;
+            blur.height                 = cbuffer_height;
+            blur.raw_data               = raw_bckg_data;
+            constexpr int GaussianCount = 20;
+            for (int times = 0; times < GaussianCount; ++times)
+            {
+                auto newblur = blur.Convolve(Texture::Convolution::GaussianBlur);
+                delete[] blur.raw_data; 
+                blur.raw_data = newblur; 
+            }
+            raw_bckg_data = blur.raw_data;
+        }
+    }
+};

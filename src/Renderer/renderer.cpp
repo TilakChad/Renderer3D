@@ -65,6 +65,14 @@ void FastClearColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
     }
 }
 
+void SetBackgroundImage(std::string_view image_path)
+{
+    // TODO :: Cache this image 
+    Texture tex; 
+    tex.raw_data = LoadPNGFromFile(image_path.data(), &tex.width, &tex.height, &tex.channels, &tex.bit_depth);
+
+}
+
 uint32_t CreateTexture(const char *img_path) // It returns handle to that texture
 {
     Texture tex;
@@ -75,6 +83,14 @@ uint32_t CreateTexture(const char *img_path) // It returns handle to that textur
     tex.textureID = Textures.size() + 1;
     Textures.push_back(tex);
     return tex.textureID;
+}
+
+uint32_t CreateTextureFromData(Texture &texture)
+{
+    texture.bValid = true; 
+    texture.textureID = Textures.size() + 1; 
+    Textures.push_back(texture); 
+    return texture.textureID;
 }
 
 Texture GetTexture(uint32_t textureID)
@@ -156,8 +172,17 @@ void ImageViewer(uint8_t *img_buffer, uint8_t *buffer, uint32_t image_width, uin
     }
 }
 
+void RenderBackground(BackgroundTexture const& texture)
+{
+    auto platform = GetCurrentPlatform();
+    std::memcpy(platform.colorBuffer.buffer, texture.raw_bckg_data,
+                sizeof(uint8_t) * platform.colorBuffer.width * platform.colorBuffer.height *
+                    platform.colorBuffer.noChannels);
+}
+
 namespace Pipeline3D
 {
+
 void ClearDepthBuffer()
 {
     // I guess setting it to zero would be better though ... since its taking a long time too 
@@ -175,4 +200,6 @@ void ClearDepthBuffer()
     std::fill(platform.zBuffer.buffer,platform.zBuffer.buffer + size, 1.0f); 
     // std::memset(platform.zBuffer.buffer, 0, sizeof(float) * size);
 }
+// SetBackGround 
+   
 } // namespace Pipelin3D

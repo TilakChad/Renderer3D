@@ -1,5 +1,5 @@
-#include "../include/renderer.h"
 #include "../include/texture.hpp"
+#include "../include/renderer.h"
 
 Vec3u8 Texture::Sample(Vec2f uv, Interpolation type)
 {
@@ -39,8 +39,12 @@ Vec3u8 Texture::Sample(Vec2f uv, Interpolation type)
         // Provide pixel in order r,g,b
         assert(raw_data != nullptr);
 
-        uint8_t *pixel       = raw_data + (ypos * this->width + xpos) * this->channels;
-        Vec3u8   pixel_color = Vec3u8(pixel[0], pixel[1], pixel[2]);
+        uint8_t *pixel = raw_data + (ypos * this->width + xpos) * this->channels;
+        Vec3u8   pixel_color;
+        if (this->channels == 1)
+            pixel_color = Vec3u8(pixel[0]);
+        else
+            pixel_color = Vec3u8(pixel[0], pixel[1], pixel[2]);
         return pixel_color;
     }
 
@@ -78,4 +82,3 @@ Vec3u8 Texture::Sample(Vec2f uv, Interpolation type)
     // Bilinear sampling .. next time
     return {};
 }
-
