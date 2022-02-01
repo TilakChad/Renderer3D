@@ -12,8 +12,7 @@
 #include "./utils/shapes.h"
 #include "./utils/thread_pool.h"
 
-// Lets now work on lighting 
-
+// Lets now work on lighting
 
 // Start of the optimization phase of rasterisation
 static uint32_t                         catTexture;
@@ -43,12 +42,24 @@ Parallel::ParallelRenderer parallel_renderer;
 // TODO : fragment  shader emulation
 // TODO : Vectorize rasterisation code and matrix operations
 
-Vec3f   cameraPosition = Vec3f();
-float   yaw            = 0;
-float   pitch          = 0;
-int32_t xPos, yPos;
+Vec3f          cameraPosition = Vec3f();
+float          yaw            = 0;
+float          pitch          = 0;
+int32_t        xPos, yPos;
 
-Vec3f   getFrontVector(Platform *platform)
+static RLights current_light{};
+
+RLights        get_light_source()
+{
+    return current_light;
+}
+
+Vec3f get_camera_position()
+{
+    return cameraPosition;
+}
+
+Vec3f getFrontVector(Platform *platform)
 {
     auto            delta_xPos     = platform->Mouse.xpos - xPos;
     auto            delta_yPos     = platform->Mouse.ypos - yPos;
@@ -70,7 +81,7 @@ Vec3f   getFrontVector(Platform *platform)
     xPos                          = platform->Mouse.xpos;
     yPos                          = platform->Mouse.ypos;
 
-    constexpr float move_constant = 5.0f;
+    constexpr float move_constant = 50.0f;
     auto            fVector       = frontVector.unit();
 
     if (platform->bKeyPressed(Keys::W))
@@ -101,7 +112,13 @@ void RendererMainLoop(Platform *platform)
             Object3D model2("../Blender/unwrappedorder.obj");
             // Object3D model("../Blender/bagpack/backpack.obj");
 
-            // model.LoadGeometry(GeoVertices, GeoVerticesIndex);
+            std::vector<Pipeline3D::VertexAttrib3D> vertices{};
+            std::vector<uint32_t>                   indices{};
+
+            // model2.LoadGeometry(vertices, indices);
+            // Renderables.AddRenderable(RenderInfo(std::move(vertices), std::move(indices),
+            //                                      RenderDevice::MergeMode::TEXTURE_MODE,
+            //                                      model2.Materials.at(0).texture_id));
             /*model2.LoadGeometry(GeoSphVertices, GeoSphVerticesIndex);*/
             // platform->SetOpacity(1.0f);
             // fancyTexture = model.Materials.at(0).texture_id;
@@ -132,7 +149,7 @@ void RendererMainLoop(Platform *platform)
             v3.TexCoord = Vec2f(0.0f, 1.0f);
 
             Vertices.insert(Vertices.end(), {v0, v1, v2, v3});
-            Indices.insert(Indices.end(), {2, 1, 0, 3, 2, 0});
+            Indices.insert(Indices.end(), {1, 2, 0, 0, 2, 3});
 
             // Allocate a texture memory and write all the pixels yourself .. less do it
             Texture texture;
@@ -168,11 +185,18 @@ void RendererMainLoop(Platform *platform)
             // z = r * sin(theta);
             // y = h (taken in steps)
 
+            Renderables.AddRenderable(RenderInfo(std::move(Vertices), std::move(Indices),
+                                                 RenderDevice::MergeMode::TEXTURE_MODE, fancyTexture));
+
             // Renderables.AddRenderable(Shape::Cylinder::offload(1.0f, 2.0f));
-            Renderables.AddRenderable(RenderInfo(std::move(Vertices),std::move(Indices),RenderDevice::MergeMode::TEXTURE_MODE,fancyTexture));
+            Renderables.AddRenderable(Shape::Sphere::offload(1.0f));
+
+            current_light = RLights{
+                .position = Vec4f(0.0f, 2.0f, 5.0f, 1.0f), .color = Vec4f(0x00, 0.25f, 0x00, 0x00), .intensity = 1.0f};
         }
         bckg.CreateBackgroundTexture("../img103.png");
         bckg.SampleForCurrentFrameBuffer(platform, false);
+        cameraPosition = Vec3f(0.0f, 0.0f, 6.0f);
     }
     else if (platform->bSizeChanged)
     {
@@ -181,21 +205,27 @@ void RendererMainLoop(Platform *platform)
         bckg.SampleForCurrentFrameBuffer(platform, true);
     }
     static float time = 0.0f;
+    // cameraPosition.z += 0.01f;
+    // current_light.position.z -= 0.001f;
     time += platform->deltaTime;
     // RenderBackground(bckg);
-    FastClearColor(0x00, 0x00, 0x00, 0x00);
+    FastClearColor(0x10, 0x10, 0x10, 0x00);
     using namespace Pipeline3D;
-    Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f,20.0f);
+    Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f, 20.0f);
     ClearDepthBuffer();
-    auto model      = Mat4f(1.0f).translate(Vec3f(0.0f, 0.0f, 0.0f)).rotateY(time); //.rotateX(time / 2.0f);
+    auto model      = Mat4f(1.0f).rotateY(time); //.rotateX(time / 2.0f);
     auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + getFrontVector(platform), Vec3f(0.0f, 1.0f, 0.0f));
-    
-    transform       = transform * lookMatrix * model;
-    // seperate the model matrix from here to other space, since we also ned to interpolate the vertex position like other things in the screen space to calculate other effects 
-    // so basically yes, its all to calculate fragpos
-    // Lets implement flat shading for now, instead of per pixel lighting .. we will come back to it 
+    // auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + Vec3f(0.0f, 0.0f, -1.0f), Vec3f(0.0f, 1.0f,
+    // 0.0f));
+
+    // seperate the model matrix from here to other space, since we also ned to interpolate the vertex position like
+    // other things in the screen space to calculate other effects so basically yes, its all to calculate fragpos Lets
+    // implement flat shading for now, instead of per pixel lighting .. we will come back to it
     for (auto &renderable : Renderables.Renderables)
-        renderable.scene_transform = transform;
+    {
+        renderable.scene_transform = transform * lookMatrix;
+        renderable.model_transform = model;
+    }
 
     parallel_renderer.AlternativeParallelRenderablePipeline(thread_pool, Renderables, MemAllocator);
     platform->SwapBuffer();

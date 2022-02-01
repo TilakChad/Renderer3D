@@ -1,11 +1,18 @@
 #include "./parallel_render.h"
 
+extern RLights get_light_source();
+// Retrieves the current light and eye position
+extern Vec3f get_camera_position();
+
 namespace Parallel
 {
 using namespace Pipeline3D;
 static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo const &v1,
                        Pipeline3D::RasterInfo const &v2, int32_t XMinBound, int32_t XMaxBound)
 {
+    auto light = get_light_source();
+    // Yup .. Now ready for flat shading
+    // Next smooth shading
     Platform platform = GetCurrentPlatform();
 
     auto     Device   = GetRasteriserDevice();
@@ -55,6 +62,25 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     // Now processing downwards
     auto          inv_w     = SIMD::Vec4ss(v0.inv_w / area, v1.inv_w / area, v2.inv_w / area, 0.0f);
     constexpr int hStepSize = 4;
+
+    // Calculate the outward normal vector
+    Vec3f dir0 = Vec3f(v0.frag_pos);
+    Vec3f dir1 = Vec3f(v1.frag_pos);
+    Vec3f dir2 = Vec3f(v2.frag_pos);
+
+    // Assuming clockwise ordering we have,
+    // Flat shading
+    auto normal   = Vec3f::Cross(dir1 - dir0, dir2 - dir1);
+    auto centroid = (v0.frag_pos + v1.frag_pos + v2.frag_pos) * (1.0f / 3.0f);
+    auto flat     = normal.unit().dot((Vec3f(light.position) - centroid).unit());
+    auto shade    = vMax(0.0f, flat);
+    // Not going to implement Gouraud shading -> In Gouraud shading lighting information are calculated at each vertex and barycentric interpolated to each fragment pos 
+    // 
+    // Now to Phong Shading and to depth mapping and then close this chapter for maybe, this sem
+    // auto eye      = get_camera_position();
+    // auto res      = (eye - centroid).unit().dot((Vec3f(light.position) - centroid).unit());
+
+    // Phong shading 
     if (Device->Context.ActiveMergeMode == RenderDevice::MergeMode::COLOR_MODE)
     {
         for (size_t h = minY; h <= maxY; ++h)
@@ -65,7 +91,7 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
 
             for (size_t w = minX; w <= maxX; w += hStepSize)
             {
-                auto mask = SIMD::Vec4ss::generate_mask(a1, a2, a3);
+                auto mask = SIMD::Vec4ss::generate_nmask(a1, a2, a3);
                 if (mask > 0)
                 {
 
@@ -107,6 +133,7 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                         {
                             auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
                             // sample texture
+                            rgb      = rgb + (light.color - rgb) * shade;
                             depth[0] = z;
                             mem[0]   = rgb.z * 255;
                             mem[1]   = rgb.y * 255;
@@ -131,6 +158,8 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                         {
                             // sample texture
                             auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
+                            rgb      = rgb + (light.color - rgb) * shade;
+
                             depth[1] = z;
                             mem[0]   = rgb.z * 255;
                             mem[1]   = rgb.y * 255;
@@ -153,6 +182,7 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                         {
                             // sample texture
                             auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
+                            rgb      = rgb + (light.color - rgb) * shade;
 
                             depth[2] = z;
                             mem[0]   = rgb.z * 255;
@@ -176,6 +206,8 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                         {
                             // sample texture
                             auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
+                            rgb      = rgb + (light.color - rgb) * shade;
+
                             depth[3] = z;
                             mem[0]   = rgb.z * 255;
                             mem[1]   = rgb.y * 255;
@@ -206,7 +238,7 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
 
             for (size_t w = minX; w <= maxX; w += hStepSize)
             {
-                auto mask = SIMD::Vec4ss::generate_mask(a1, a2, a3);
+                auto mask = SIMD::Vec4ss::generate_nmask(a1, a2, a3);
                 if (mask > 0)
                 {
 
@@ -256,9 +288,9 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             // sample texture
                             auto rgb = texture.Sample(uv);
                             depth[0] = z;
-                            mem[0]   = rgb.z;
-                            mem[1]   = rgb.y;
-                            mem[2]   = rgb.x;
+                            mem[0]   = rgb.z * shade;
+                            mem[1]   = rgb.y * shade;
+                            mem[2]   = rgb.x * shade;
                             mem[3]   = 0x00;
                         }
                     }
@@ -281,9 +313,9 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             // sample texture
                             auto rgb = texture.Sample(uv);
                             depth[1] = z;
-                            mem[0]   = rgb.z;
-                            mem[1]   = rgb.y;
-                            mem[2]   = rgb.x;
+                            mem[0]   = rgb.z * shade;
+                            mem[1]   = rgb.y * shade;
+                            mem[2]   = rgb.x * shade;
                             mem[3]   = 0x00;
                         }
                     }
@@ -304,9 +336,9 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             // sample texture
                             auto rgb = texture.Sample(uv);
                             depth[2] = z;
-                            mem[0]   = rgb.z;
-                            mem[1]   = rgb.y;
-                            mem[2]   = rgb.x;
+                            mem[0]   = rgb.z * shade;
+                            mem[1]   = rgb.y * shade;
+                            mem[2]   = rgb.x * shade;
                             mem[3]   = 0x00;
                         }
                     }
@@ -327,9 +359,9 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             // sample texture
                             auto rgb = texture.Sample(uv);
                             depth[3] = z;
-                            mem[0]   = rgb.z;
-                            mem[1]   = rgb.y;
-                            mem[2]   = rgb.x;
+                            mem[0]   = rgb.z * shade;
+                            mem[1]   = rgb.y * shade;
+                            mem[2]   = rgb.x * shade;
                             mem[3]   = 0x00;
                         }
                     }
@@ -365,9 +397,9 @@ static void ScreenSpace(VertexAttrib3D const &v0, VertexAttrib3D const &v1, Vert
     float    z2       = v2.Position.z;
 
     // With raster info struct now
-    RasterInfo rs0(x0, y0, z0, v0.Position.w, v0.TexCoord, v0.Color);
-    RasterInfo rs1(x1, y1, z1, v1.Position.w, v1.TexCoord, v1.Color);
-    RasterInfo rs2(x2, y2, z2, v2.Position.w, v2.TexCoord, v2.Color);
+    RasterInfo rs0(x0, y0, z0, v0.Position.w, v0.TexCoord, v0.Color, v0.FragPos);
+    RasterInfo rs1(x1, y1, z1, v1.Position.w, v1.TexCoord, v1.Color, v1.FragPos);
+    RasterInfo rs2(x2, y2, z2, v2.Position.w, v2.TexCoord, v2.Color, v2.FragPos);
 
     // Run all threads parallely from here
     // parameterized by rs0,rs1 and rs2
@@ -383,6 +415,8 @@ static void ScreenSpace(VertexAttrib3D const &v0, VertexAttrib3D const &v1, Vert
 static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2, MemAlloc<VertexAttrib3D> &allocator,
                         int32_t XMinBound, int32_t XMaxBound)
 {
+    // The position data should be interpolated and passed before the perspective division phase
+
     v0.Position = v0.Position.PerspectiveDivide();
     v1.Position = v1.Position.PerspectiveDivide();
     v2.Position = v2.Position.PerspectiveDivide();
@@ -459,6 +493,9 @@ static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
 
                     inter.Color       = (t * v1.Color + one_minus_t * v0.Color);
                     inter.Color       = inter.Color * (1.0f / (t + one_minus_t));
+
+                    inter.FragPos     = (t * v1.FragPos + one_minus_t * v0.FragPos);
+                    inter.FragPos     = inter.FragPos * (1.0f / (t + one_minus_t));
                 }
                 else
                 {
@@ -478,6 +515,9 @@ static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
 
                     inter.Color       = (t * v1.Color + one_minus_t * v0.Color);
                     inter.Color       = inter.Color * (1.0f / (t + one_minus_t));
+
+                    inter.FragPos     = (t * v1.FragPos + one_minus_t * v0.FragPos);
+                    inter.FragPos     = inter.FragPos * (1.0f / (t + one_minus_t));
                 }
                 // Nothing done here .. Might revisit during texture mapping phase
                 // TODO -> Handle cases
@@ -542,6 +582,7 @@ static void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAtt
             else
             {
                 // <-- If any part is inside or outside, interpolate along the z axis, all parameters
+                // MayTODO :: Switch along different interpolation axis .. could be along w
                 //__debugbreak();
                 float          t  = (-v0.Position.z) / (v1.Position.z - v0.Position.z);
                 auto           pn = v0.Position + t * (v1.Position - v0.Position);
@@ -550,6 +591,7 @@ static void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAtt
 
                 vn.TexCoord = v0.TexCoord + t * (v1.TexCoord - v0.TexCoord);
                 vn.Color    = v0.Color + t * (v1.Color - v0.Color);
+                vn.FragPos  = v0.FragPos + t * (v1.FragPos - v0.FragPos);
                 outVertices.push_back(vn);
                 if (head)
                     outVertices.push_back(v1);
@@ -558,8 +600,6 @@ static void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAtt
     }
     for (int vertex = 1; vertex < outVertices.size() - 1; vertex += 1)
     {
-        // ScreenSpace(outVertices.at(0), outVertices.at(vertex), outVertices.at((vertex + 1) %
-        // outVertices.size()));
         Parallel::ClipSpace2D(outVertices.at(0), outVertices.at(vertex),
                               outVertices.at((vertex + 1) % outVertices.size()), allocator, XMinBound, XMaxBound);
     }
@@ -581,13 +621,22 @@ static void ParallelRenderableDraw(RenderList &renderables, MemAlloc<Pipeline3D:
         for (std::size_t i = 0; i < renderable.indices.size(); i += 3)
         {
             allocator.resource->reset();
-            v0          = renderable.vertices[renderable.indices[i]];
-            v1          = renderable.vertices[renderable.indices[i + 1]];
-            v2          = renderable.vertices[renderable.indices[i + 2]];
+            v0 = renderable.vertices[renderable.indices[i]];
+            v1 = renderable.vertices[renderable.indices[i + 1]];
+            v2 = renderable.vertices[renderable.indices[i + 2]];
 
-            v0.Position = renderable.scene_transform * v0.Position;
-            v1.Position = renderable.scene_transform * v1.Position;
-            v2.Position = renderable.scene_transform * v2.Position;
+            // Allow passing of model and perspective matrix seperately
+            v0.FragPos = renderable.model_transform * v0.Position;
+            v1.FragPos = renderable.model_transform * v1.Position;
+            v2.FragPos = renderable.model_transform * v2.Position;
+            // Am I an idiot? -> Yes, apparently I am.
+
+            v0.Position = renderable.scene_transform * renderable.model_transform * v0.Position;
+            v1.Position = renderable.scene_transform * renderable.model_transform * v1.Position;
+            v2.Position = renderable.scene_transform * renderable.model_transform * v2.Position;
+
+            // Only use the model transform to transform the fragPos vectors ... They aren't subjected to perspective
+            // projection Nature doesn't work depending on how our eyes perceive the effect .. Its absolute
 
             Parallel::Clip3D(v0, v1, v2, allocator, XMinBound, XMaxBound);
         }
