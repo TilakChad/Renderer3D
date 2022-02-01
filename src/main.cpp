@@ -115,10 +115,10 @@ void RendererMainLoop(Platform *platform)
             std::vector<Pipeline3D::VertexAttrib3D> vertices{};
             std::vector<uint32_t>                   indices{};
 
-            // model2.LoadGeometry(vertices, indices);
-            // Renderables.AddRenderable(RenderInfo(std::move(vertices), std::move(indices),
-            //                                      RenderDevice::MergeMode::TEXTURE_MODE,
-            //                                      model2.Materials.at(0).texture_id));
+            model.LoadGeometry(vertices, indices);
+            Renderables.AddRenderable(RenderInfo(std::move(vertices), std::move(indices),
+                                                  RenderDevice::MergeMode::COLOR_MODE,
+                                                  model.Materials.at(0).texture_id));
             /*model2.LoadGeometry(GeoSphVertices, GeoSphVerticesIndex);*/
             // platform->SetOpacity(1.0f);
             // fancyTexture = model.Materials.at(0).texture_id;
@@ -185,14 +185,14 @@ void RendererMainLoop(Platform *platform)
             // z = r * sin(theta);
             // y = h (taken in steps)
 
-            Renderables.AddRenderable(RenderInfo(std::move(Vertices), std::move(Indices),
-                                                 RenderDevice::MergeMode::TEXTURE_MODE, fancyTexture));
+            // Renderables.AddRenderable(RenderInfo(std::move(Vertices), std::move(Indices),
+            //                                   RenderDevice::MergeMode::TEXTURE_MODE, fancyTexture));
 
             // Renderables.AddRenderable(Shape::Cylinder::offload(1.0f, 2.0f));
-            Renderables.AddRenderable(Shape::Sphere::offload(1.0f));
+            // Renderables.AddRenderable(Shape::Sphere::offload(1.0f));
 
             current_light = RLights{
-                .position = Vec4f(0.0f, 2.0f, 5.0f, 1.0f), .color = Vec4f(0x00, 0.25f, 0x00, 0x00), .intensity = 1.0f};
+                .position = Vec4f(0.0f, 0.0f, 5.0f, 1.0f), .color = Vec4f(1.0f, 215.0f/255.0f, 0x00, 0x00), .intensity = 1.0f};
         }
         bckg.CreateBackgroundTexture("../img103.png");
         bckg.SampleForCurrentFrameBuffer(platform, false);
@@ -205,6 +205,8 @@ void RendererMainLoop(Platform *platform)
         bckg.SampleForCurrentFrameBuffer(platform, true);
     }
     static float time = 0.0f;
+    // rotate light 
+    // current_light.position = Vec4f(2 * cos(time / 5.0f), 0.0f, 2 * sin(time / 5.0f), 1.0f);
     // cameraPosition.z += 0.01f;
     // current_light.position.z -= 0.001f;
     time += platform->deltaTime;

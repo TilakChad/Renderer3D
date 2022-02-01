@@ -1,4 +1,5 @@
 #include "./parallel_render.h"
+#include "../include/shader.h"
 
 extern RLights get_light_source();
 // Retrieves the current light and eye position
@@ -10,7 +11,9 @@ using namespace Pipeline3D;
 static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo const &v1,
                        Pipeline3D::RasterInfo const &v2, int32_t XMinBound, int32_t XMaxBound)
 {
-    auto light = get_light_source();
+    auto            light     = get_light_source();
+    auto            cameraPos = get_camera_position();
+    constexpr float shiny     = 32.0f;
     // Yup .. Now ready for flat shading
     // Next smooth shading
     Platform platform = GetCurrentPlatform();
@@ -73,14 +76,18 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     auto normal   = Vec3f::Cross(dir1 - dir0, dir2 - dir1);
     auto centroid = (v0.frag_pos + v1.frag_pos + v2.frag_pos) * (1.0f / 3.0f);
     auto flat     = normal.unit().dot((Vec3f(light.position) - centroid).unit());
-    auto shade    = vMax(0.0f, flat);
-    // Not going to implement Gouraud shading -> In Gouraud shading lighting information are calculated at each vertex and barycentric interpolated to each fragment pos 
-    // 
+    auto shade    = vMax(0.0f, flat) * 0.2f;
+    // Not going to implement Gouraud shading -> In Gouraud shading lighting information are calculated at each vertex
+    // and barycentric interpolated to each fragment pos
+    //
     // Now to Phong Shading and to depth mapping and then close this chapter for maybe, this sem
     // auto eye      = get_camera_position();
     // auto res      = (eye - centroid).unit().dot((Vec3f(light.position) - centroid).unit());
 
-    // Phong shading 
+    // Phong shading
+    // So basically, in phong shading normals are interpolated along each vertex, since all triangles are flat and their
+    // normals are same, we don't need that interpolation here We interpolating frag pos instead and calculate the
+    // directional impact, ambient contribution and phong specular on pex pixel basis
     if (Device->Context.ActiveMergeMode == RenderDevice::MergeMode::COLOR_MODE)
     {
         for (size_t h = minY; h <= maxY; ++h)
@@ -133,12 +140,36 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                         {
                             auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
                             // sample texture
-                            rgb      = rgb + (light.color - rgb) * shade;
+                            // flat shading
+                            // rgb      = rgb + (light.color - rgb) * shade;
+                            // phong shading
+
+                            // interpolate using barycentric co-ordinate, position of the vertices to find current
+                            // fragPos
+
+                            rgb = rgb + (light.color - rgb) * shade;
+                            if constexpr (shading == Shading::Phong)
+                            {
+                                auto pixelPos =
+                                    (a[3] * v0.frag_pos + a[2] * v1.frag_pos + a[1] * v2.frag_pos) * (1.0f / bary_sum);
+                                // specular constant
+                                // reflected vector
+                                auto reflect_vec = Vec3f(pixelPos - light.position).unit().reflect(normal).unit();
+                                auto specular = powf(vMax(0.0f, (cameraPos - pixelPos).unit().dot(reflect_vec)), shiny);
+
+                                rgb           = rgb + light.color * specular;
+                            }
+
                             depth[0] = z;
-                            mem[0]   = rgb.z * 255;
-                            mem[1]   = rgb.y * 255;
-                            mem[2]   = rgb.x * 255;
-                            mem[3]   = rgb.w * 255;
+                            // mem[0]   = std::clamp(rgb.z * 255,0.0f,1.0f);
+                            // mem[1]   = rgb.y * 255;
+                            // mem[2]   = rgb.x * 255;
+                            // mem[3]   = rgb.w * 255;
+
+                            mem[0] = std::clamp(rgb.z, 0.0f, 1.0f) * 255;
+                            mem[1] = std::clamp(rgb.y, 0.0f, 1.0f) * 255;
+                            mem[2] = std::clamp(rgb.x, 0.0f, 1.0f) * 255;
+                            mem[3] = std::clamp(rgb.w, 0.0f, 1.0f) * 255;
                         }
                     }
 
@@ -160,11 +191,30 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
                             rgb      = rgb + (light.color - rgb) * shade;
 
+                            if constexpr (shading == Shading::Phong)
+                            {
+
+                                auto pixelPos =
+                                    (a[3] * v0.frag_pos + a[2] * v1.frag_pos + a[1] * v2.frag_pos) * (1.0f / bary_sum);
+                                auto reflect_vec = Vec3f(pixelPos - light.position).unit().reflect(normal).unit();
+                                auto specular = powf(vMax(0.0f, (cameraPos - pixelPos).unit().dot(reflect_vec)), shiny);
+                                rgb           = rgb + light.color * specular;
+                            }
                             depth[1] = z;
-                            mem[0]   = rgb.z * 255;
-                            mem[1]   = rgb.y * 255;
-                            mem[2]   = rgb.x * 255;
-                            mem[3]   = rgb.w * 255;
+                            //mem[0]   = rgb.z * 255;
+                            //mem[1]   = rgb.y * 255;
+                            //mem[2]   = rgb.x * 255;
+                            //mem[3]   = rgb.w * 255;
+
+                            //mem[0]   = std::clamp(rgb.z * 255, 0.0f, 1.0f);
+                            //mem[1]   = std::clamp(rgb.y * 255, 0.0f, 1.0f);
+                            //mem[2]   = std::clamp(rgb.x * 255, 0.0f, 1.0f);
+                            //mem[3]   = std::clamp(rgb.w * 255, 0.0f, 1.0f);
+
+                            mem[0] = std::clamp(rgb.z, 0.0f, 1.0f) * 255;
+                            mem[1] = std::clamp(rgb.y, 0.0f, 1.0f) * 255;
+                            mem[2] = std::clamp(rgb.x, 0.0f, 1.0f) * 255;
+                            mem[3] = std::clamp(rgb.w, 0.0f, 1.0f) * 255;
                         }
                     }
                     if (mask & 0x02)
@@ -184,11 +234,26 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
                             rgb      = rgb + (light.color - rgb) * shade;
 
+                            if constexpr (shading == Shading::Phong)
+                            {
+
+                                auto pixelPos =
+                                    (a[3] * v0.frag_pos + a[2] * v1.frag_pos + a[1] * v2.frag_pos) * (1.0f / bary_sum);
+                                auto reflect_vec = Vec3f(pixelPos - light.position).unit().reflect(normal).unit();
+                                auto specular = powf(vMax(0.0f, (cameraPos - pixelPos).unit().dot(reflect_vec)), shiny);
+
+                                rgb           = rgb + light.color * specular;
+                            }
                             depth[2] = z;
-                            mem[0]   = rgb.z * 255;
-                            mem[1]   = rgb.y * 255;
-                            mem[2]   = rgb.x * 255;
-                            mem[3]   = 0x00;
+                            //mem[0]   = rgb.z * 255;
+                            //mem[1]   = rgb.y * 255;
+                            //mem[2]   = rgb.x * 255;
+                            //mem[3]   = 0x00;
+
+                            mem[0] = std::clamp(rgb.z, 0.0f, 1.0f) * 255;
+                            mem[1] = std::clamp(rgb.y, 0.0f, 1.0f) * 255;
+                            mem[2] = std::clamp(rgb.x, 0.0f, 1.0f) * 255;
+                            mem[3] = std::clamp(rgb.w, 0.0f, 1.0f) * 255;
                         }
                     }
                     if (mask & 0x01)
@@ -208,11 +273,26 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             auto rgb = (a[3] * v0.color + a[2] * v1.color + a[1] * v2.color) * (1.0f / bary_sum);
                             rgb      = rgb + (light.color - rgb) * shade;
 
+                            if constexpr (shading == Shading::Phong)
+                            {
+
+                                auto pixelPos =
+                                    (a[3] * v0.frag_pos + a[2] * v1.frag_pos + a[1] * v2.frag_pos) * (1.0f / bary_sum);
+                                auto reflect_vec = Vec3f(pixelPos - light.position).unit().reflect(normal).unit();
+                                auto specular = powf(vMax(0.0f, (cameraPos - pixelPos).unit().dot(reflect_vec)), shiny);
+
+                                rgb           = rgb + light.color * specular;
+                            }
                             depth[3] = z;
-                            mem[0]   = rgb.z * 255;
-                            mem[1]   = rgb.y * 255;
-                            mem[2]   = rgb.x * 255;
-                            mem[3]   = 0x00;
+                            //mem[0]   = rgb.z * 255;
+                            //mem[1]   = rgb.y * 255;
+                            //mem[2]   = rgb.x * 255;
+                            //mem[3]   = 0x00;
+
+                            mem[0] = std::clamp(rgb.z, 0.0f, 1.0f) * 255;
+                            mem[1] = std::clamp(rgb.y, 0.0f, 1.0f) * 255;
+                            mem[2] = std::clamp(rgb.x, 0.0f, 1.0f) * 255;
+                            mem[3] = std::clamp(rgb.w, 0.0f, 1.0f) * 255;
                         }
                     }
                 }
@@ -467,9 +547,9 @@ static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
                     Vec2f(v0.Position.x, v0.Position.y) +
                     (Vec2f(v1.Position.x, v1.Position.y) - Vec2f(v0.Position.x, v0.Position.y)) * intersection.y;
 
-                // point1 and point2 are same and are the intersection obtained by clipping against the clipping Poly
-                // Since they lie on the edge of the triangle, vertex attributes can be linearly interpolated across
-                // those two vertices
+                // point1 and point2 are same and are the intersection obtained by clipping against the clipping
+                // Poly Since they lie on the edge of the triangle, vertex attributes can be linearly
+                // interpolated across those two vertices
                 VertexAttrib3D inter;
                 inter.Position = Vec4f(point1, 0.0f, 1.0f); // <-- Todo
 
@@ -521,9 +601,11 @@ static void ClipSpace2D(VertexAttrib3D v0, VertexAttrib3D v1, VertexAttrib3D v2,
                 }
                 // Nothing done here .. Might revisit during texture mapping phase
                 // TODO -> Handle cases
-                // auto floatColor = Vec3f(v0.Color.x, v0.Color.y, v0.Color.z) + (inter.Position.x - v0.Position.x) /
-                //                                                                  (v1.Position.x - v0.Position.x) *
-                //                                                                  (v1.Color - v0.Color);
+                // auto floatColor = Vec3f(v0.Color.x, v0.Color.y, v0.Color.z) + (inter.Position.x -
+                // v0.Position.x) /
+                //                                                                  (v1.Position.x -
+                //                                                                  v0.Position.x) * (v1.Color -
+                //                                                                  v0.Color);
                 outVertices.push_back(inter); // Pushes the intersection point
                 if (head)
                     outVertices.push_back(v1);
@@ -635,8 +717,9 @@ static void ParallelRenderableDraw(RenderList &renderables, MemAlloc<Pipeline3D:
             v1.Position = renderable.scene_transform * renderable.model_transform * v1.Position;
             v2.Position = renderable.scene_transform * renderable.model_transform * v2.Position;
 
-            // Only use the model transform to transform the fragPos vectors ... They aren't subjected to perspective
-            // projection Nature doesn't work depending on how our eyes perceive the effect .. Its absolute
+            // Only use the model transform to transform the fragPos vectors ... They aren't subjected to
+            // perspective projection Nature doesn't work depending on how our eyes perceive the effect .. Its
+            // absolute
 
             Parallel::Clip3D(v0, v1, v2, allocator, XMinBound, XMaxBound);
         }
