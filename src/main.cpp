@@ -42,10 +42,12 @@ Parallel::ParallelRenderer parallel_renderer;
 // TODO : fragment  shader emulation
 // TODO : Vectorize rasterisation code and matrix operations
 
-Vec3f          cameraPosition = Vec3f();
-float          yaw            = 0;
-float          pitch          = 0;
-int32_t        xPos, yPos;
+Vec3f   cameraPosition = Vec3f();
+float   yaw            = 0;
+float   pitch          = 0;
+int32_t xPos, yPos;
+
+// TODO : Shadow casting using depth mapping and simple sphere simulations in 3D
 
 static RLights current_light{};
 
@@ -117,8 +119,8 @@ void RendererMainLoop(Platform *platform)
 
             model.LoadGeometry(vertices, indices);
             Renderables.AddRenderable(RenderInfo(std::move(vertices), std::move(indices),
-                                                  RenderDevice::MergeMode::COLOR_MODE,
-                                                  model.Materials.at(0).texture_id));
+                                                 RenderDevice::MergeMode::COLOR_MODE,
+                                                 model.Materials.at(0).texture_id));
             /*model2.LoadGeometry(GeoSphVertices, GeoSphVerticesIndex);*/
             // platform->SetOpacity(1.0f);
             // fancyTexture = model.Materials.at(0).texture_id;
@@ -149,7 +151,7 @@ void RendererMainLoop(Platform *platform)
             v3.TexCoord = Vec2f(0.0f, 1.0f);
 
             Vertices.insert(Vertices.end(), {v0, v1, v2, v3});
-            Indices.insert(Indices.end(), {1, 2, 0, 0, 2, 3});
+            Indices.insert(Indices.end(), {0, 1, 2, 0, 2, 3});
 
             // Allocate a texture memory and write all the pixels yourself .. less do it
             Texture texture;
@@ -185,14 +187,15 @@ void RendererMainLoop(Platform *platform)
             // z = r * sin(theta);
             // y = h (taken in steps)
 
-            // Renderables.AddRenderable(RenderInfo(std::move(Vertices), std::move(Indices),
-            //                                   RenderDevice::MergeMode::TEXTURE_MODE, fancyTexture));
+            Renderables.AddRenderable(RenderInfo(std::move(Vertices), std::move(Indices),
+                                                 RenderDevice::MergeMode::TEXTURE_MODE, fancyTexture));
 
             // Renderables.AddRenderable(Shape::Cylinder::offload(1.0f, 2.0f));
-            // Renderables.AddRenderable(Shape::Sphere::offload(1.0f));
+            Renderables.AddRenderable(Shape::Sphere::offload(1.0f));
 
-            current_light = RLights{
-                .position = Vec4f(0.0f, 0.0f, 5.0f, 1.0f), .color = Vec4f(1.0f, 215.0f/255.0f, 0x00, 0x00), .intensity = 1.0f};
+            current_light = RLights{.position  = Vec4f(0.0f, 0.0f, 5.0f, 1.0f),
+                                    .color     = Vec4f(1.0f, 215.0f / 255.0f, 0x00, 0x00),
+                                    .intensity = 1.0f};
         }
         bckg.CreateBackgroundTexture("../img103.png");
         bckg.SampleForCurrentFrameBuffer(platform, false);
@@ -205,17 +208,21 @@ void RendererMainLoop(Platform *platform)
         bckg.SampleForCurrentFrameBuffer(platform, true);
     }
     static float time = 0.0f;
-    // rotate light 
+    current_light.position.y += 0.001f;
+    // rotate light
     // current_light.position = Vec4f(2 * cos(time / 5.0f), 0.0f, 2 * sin(time / 5.0f), 1.0f);
     // cameraPosition.z += 0.01f;
     // current_light.position.z -= 0.001f;
     time += platform->deltaTime;
-    // RenderBackground(bckg);
-    FastClearColor(0x10, 0x10, 0x10, 0x00);
+    RenderBackground(bckg);
+    // FastClearColor(0x10, 0x10, 0x10, 0x00);
     using namespace Pipeline3D;
-    Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f, 20.0f);
+    Mat4f transform = PerspectiveAlt(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f, 20.0f);
+    /*auto transform = OrthoProjection(-5.0f, 5.0f, -5.0f, 5.0f, -5.0f, 10.0f);
+    */
     ClearDepthBuffer();
-    auto model      = Mat4f(1.0f).rotateY(time); //.rotateX(time / 2.0f);
+    auto model      = Mat4f(1.0f).translate(Vec3f(0.0f,1.0f,0.0f)).rotateY(time); //.rotateX(time / 2.0f);
+    // Math is magic 
     auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + getFrontVector(platform), Vec3f(0.0f, 1.0f, 0.0f));
     // auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + Vec3f(0.0f, 0.0f, -1.0f), Vec3f(0.0f, 1.0f,
     // 0.0f));
@@ -226,10 +233,34 @@ void RendererMainLoop(Platform *platform)
     for (auto &renderable : Renderables.Renderables)
     {
         renderable.scene_transform = transform * lookMatrix;
-        renderable.model_transform = model;
+        //renderable.model_transform = model;
     }
+    Renderables.Renderables.at(0).model_transform = model;
+    Renderables.Renderables.at(1).model_transform = Mat4f(1.0f);
+    Renderables.Renderables.at(2).model_transform = Mat4f(1.0f).translate({1.0f, 1.0f, -0.5f});
 
     parallel_renderer.AlternativeParallelRenderablePipeline(thread_pool, Renderables, MemAllocator);
+    // Visualize the shadow depth buffer
+    // This good ... now render form light's perspective 
+    // So, without model transform, our mesh is basically at the centre of the world. and light is exactly above it, with directional shadow casting ability 
+    //auto shadow = platform->shadowMap.buffer;
+    //for (int h = 0; h < platform->shadowMap.height; ++h)
+    //{
+    //    for (int w = 0; w < platform->shadowMap.width; ++w)
+    //    {
+    //        // Read from shadow map and place into color buffer 
+    //        auto offset =
+    //            platform->colorBuffer.buffer + (h * platform->colorBuffer.width + w) * platform->colorBuffer.noChannels;
+    //        auto val  = *shadow * 255; 
+    //        if (val < 0)
+    //            __debugbreak();
+    //        offset[0] = val; 
+    //        offset[1] = val; 
+    //        offset[2] = val; 
+    //        offset[3] = val; 
+    //        shadow++;
+    //    }
+    //}
     platform->SwapBuffer();
 }
 

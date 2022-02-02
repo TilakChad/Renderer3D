@@ -77,3 +77,11 @@ class ParallelRenderer
                                                std::vector<MemAlloc<Pipeline3D::VertexAttrib3D>> &allocator);
 };
 } // namespace Parallel
+
+namespace ShadowMapper
+{
+    // TODO:: Remove this split with if constexpr 
+using namespace Pipeline3D;
+void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAttrib3D const &v2,
+                   MemAlloc<Pipeline3D::VertexAttrib3D> &allocator, int32_t XMinBound, int32_t XMaxBound);
+}

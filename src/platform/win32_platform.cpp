@@ -150,8 +150,19 @@ void ResizeWritableBitmap(uint32_t width, uint32_t height)
     win32Platform.zBuffer.width  = width;
     win32Platform.zBuffer.height = height;
 
+    // intialize shadow map here, once and for all
+    if (win32Platform.shadowMap.buffer)
+        VirtualFree(win32Platform.shadowMap.buffer, 0, MEM_RELEASE);
+
+    win32Platform.shadowMap.width  = width;
+    win32Platform.shadowMap.height = height;
+    win32Platform.shadowMap.buffer = static_cast<float *>(
+        VirtualAlloc(nullptr, sizeof(float) * win32Platform.shadowMap.width * win32Platform.shadowMap.height,
+                     MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+
     assert(win32.renderBuffer.colorBuffer != nullptr);
     assert(win32Platform.zBuffer.buffer);
+    assert(win32Platform.shadowMap.buffer);
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR CmdLine, int nCmdShow)
@@ -247,6 +258,7 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
         CreateWritableBitmap(win32Platform.height, win32Platform.height);
         SetCursorPos(300, 300);
+        ShowCursor(FALSE);
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 
@@ -275,19 +287,20 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_SIZE:
     {
         // TODO : Handle when (width | height -> 0) or (Minimized event is sent)
-        win32Platform.bFirst = true;
+        // win32Platform.bFirst = true;
         RECT rect;
         GetClientRect(hwnd, &rect);
-        win32Platform.width  = rect.right - rect.left;
-        win32Platform.height = rect.bottom - rect.top;
+        win32Platform.width        = rect.right - rect.left;
+        win32Platform.height       = rect.bottom - rect.top;
+        win32Platform.bSizeChanged = true;
         ResizeWritableBitmap(win32Platform.width, win32Platform.height);
         OutputDebugString(L"WM_SIZE\n");
         break;
     }
     case WM_MOUSEMOVE:
     {
-       /* win32Platform.Mouse.xpos = GET_X_LPARAM(lParam);
-        win32Platform.Mouse.ypos = GET_Y_LPARAM(lParam);*/
+        /* win32Platform.Mouse.xpos = GET_X_LPARAM(lParam);
+         win32Platform.Mouse.ypos = GET_Y_LPARAM(lParam);*/
         break;
     }
     case WM_MOUSEWHEEL:
@@ -309,6 +322,8 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             ToggleFullScreen(hwnd);
         }
         win32Platform.Keyboard.keymaps[win32Platform.Keyboard.keycodes[wParam]] = 1;
+        if (wParam == VK_ESCAPE)
+            PostQuitMessage(0);
         break;
     }
 
@@ -337,8 +352,8 @@ LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             dx = data->data.mouse.lLastX;
             dy = data->data.mouse.lLastY;
         }
-        win32Platform.Mouse.xpos += dx; 
-        win32Platform.Mouse.ypos += dy; 
+        win32Platform.Mouse.xpos += dx;
+        win32Platform.Mouse.ypos += dy;
         delete[] lpb;
         break;
     }

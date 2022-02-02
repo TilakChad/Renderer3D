@@ -75,8 +75,16 @@ struct Platform
 
     struct
     {
+        float   *buffer;
+        uint32_t width    = 0;
+        uint32_t height   = 0;
+        uint32_t channels = 1;
+    } shadowMap;
+
+    struct
+    {
         // No stencil buffer, only depth buffer for now.. with single precision floating point depth
-        float *  buffer = nullptr;
+        float   *buffer = nullptr;
         uint32_t width;
         uint32_t height;
     } zBuffer;
@@ -84,7 +92,8 @@ struct Platform
     SwapBufferFn SwapBuffer;
     OpacityFn    SetOpacity;
     KeyPressedFn bKeyPressed;
-    bool         bFirst = true;
+    bool         bFirst       = true;
+    bool         bSizeChanged = false;
     struct
     {
         bool    bMouseScrolled = false;
