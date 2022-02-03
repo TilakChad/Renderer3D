@@ -3,8 +3,10 @@
 
 extern RLights get_light_source();
 // Retrieves the current light and eye position
-extern Vec3f get_camera_position();
+extern Vec3f   get_camera_position();
 
+constexpr bool cast_shadow = false;
+// Lets use some template stuffs to control code branching instead of macro definitions
 namespace Parallel
 {
 using namespace Pipeline3D;
@@ -15,7 +17,7 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     auto            cameraPos = get_camera_position();
     constexpr float shiny     = 32.0f;
     // Yup .. Now ready for flat shading
-    // the depth map somehow here 
+    // the depth map somehow here
     // Next smooth shading
     Platform platform = GetCurrentPlatform();
 
@@ -77,7 +79,7 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     auto normal   = Vec3f::Cross(dir1 - dir0, dir2 - dir1);
     auto centroid = (v0.frag_pos + v1.frag_pos + v2.frag_pos) * (1.0f / 3.0f);
     auto flat     = normal.unit().dot((Vec3f(light.position) - centroid).unit());
-    auto shade    = vMax(0.0f, flat) * 0.5f;
+    auto shade    = vMax(0.0f, flat) * 0.8f;
     // Not going to implement Gouraud shading -> In Gouraud shading lighting information are calculated at each vertex
     // and barycentric interpolated to each fragment pos
     //
@@ -90,7 +92,16 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     // normals are same, we don't need that interpolation here We interpolating frag pos instead and calculate the
     // directional impact, ambient contribution and phong specular on pex pixel basis
 
-    // Now to the depth mapping 
+    // Now to the depth mapping
+    auto lightOrtho = OrthoProjection(-5.0f, 5.0f, -5.0f, 5.0f, -10.0f, 10.0f);
+    // clashes with SIMD lookAtMatrix
+    auto lightView = ::lookAtMatrix(light.position, Vec3f(0.0f, 0.0f, 0.0f), Vec3f(0.0f, 1.0f, 0.0f));
+
+    auto shadowPos0 = lightOrtho * lightView * v0.frag_pos;
+    auto shadowPos1 = lightOrtho * lightView * v1.frag_pos;
+    auto shadowPos2 = lightOrtho * lightView * v2.frag_pos;
+
+    // calculate lightPos
     if (Device->Context.ActiveMergeMode == RenderDevice::MergeMode::COLOR_MODE)
     {
         for (size_t h = minY; h <= maxY; ++h)
@@ -312,19 +323,20 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     else
     {
         // auto inv_w   = SIMD::Vec4ss(v0.inv_w / area, v1.inv_w / area, v2.inv_w / area, 0.0f);
+        // Do depth mapping for textured floor for now
         auto texture = GetActiveTexture();
         for (size_t h = minY; h <= maxY; ++h)
         {
-            a1 = a1_vec;
-            a2 = a2_vec;
-            a3 = a3_vec;
+            a1                   = a1_vec;
+            a2                   = a2_vec;
+            a3                   = a3_vec;
 
+            constexpr float bias = 0.005f;
             for (size_t w = minX; w <= maxX; w += hStepSize)
             {
                 auto mask = SIMD::Vec4ss::generate_nmask(a1, a2, a3);
                 if (mask > 0)
                 {
-
                     size_t offset = (platform.colorBuffer.height - 1 - h) * platform.colorBuffer.width *
                                     platform.colorBuffer.noChannels;
                     uint8_t *off   = platform.colorBuffer.buffer + offset + w * platform.colorBuffer.noChannels;
@@ -364,17 +376,99 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
 
                         float a[4];
                         _mm_store_ps(a, lvec1.vec);
-                        ;
                         auto uv = (a[3] * v0.texCoord + a[2] * v1.texCoord + a[1] * v2.texCoord) * (1.0f / bary_sum);
                         if (z < depth[0])
                         {
                             // sample texture
                             auto rgb = texture.Sample(uv);
-                            depth[0] = z;
-                            mem[0]   = rgb.z * shade;
-                            mem[1]   = rgb.y * shade;
-                            mem[2]   = rgb.x * shade;
-                            mem[3]   = 0x00;
+                            // Now sample from depth texture
+                            // I think that shadow map should be converted first to texture, so that it would be easier
+                            // to sample depth value directly from the texture But lets go without it for now Get the
+                            // position of the current pixel
+
+                            // auto pixelPos =
+                            //  (a[3] * v0.frag_pos + a[2] * v1.frag_pos + a[1] * v2.frag_pos) * (1.0f / bary_sum);
+                            // Transform it using the earlier defined ortho + view projection to find its position in
+                            // shadow map Lmao .. really? Is depth mapping that much expensive? Need to do per pixel
+                            // matrix multiplication? I guess, it would be fine to calculate this transformation once
+                            // for each vertex and then do barycentric interpolation along the way
+
+                            // For now, going with matrix transformation
+
+                            // auto posInShadowMap = lightOrtho * lightView * pixelPos;
+                            // Ready to burn CPU?
+                            // This not enough, now need to sample the depth value at that position
+
+                            // To do that :
+                            // Basically, we drew shadow map from the perspective of light which maps the region into
+                            // NDC co-ordinates, ignoring depth x and y are mapped to -1 and 1 which needs to be
+                            // remapped into the range of 0 to 1 for easy sampling lets not do that remap, and continue
+                            // with manual sampling
+
+                            // So take this point and try to retrieve the depth information
+                            // Where's emacs artist mode?
+
+                            /*
+                                -------------------------------------------------------------------------------
+                                |                                                                       (w,h) |
+                                |                                                                             |
+                                |                               Vertically it ranges from -1 to +1            |
+                                |                                   Its same horizontally                     |
+                                |                                                                             |
+                                |                                                                             |
+                                |                                                                             |
+                                |                                                                             |
+                                |                                                                             |
+                                |                                                                             |
+                                |                                                                             |
+                                |                                                                             |
+                                |                                                                             |
+                                |                                                                             |
+                                |                                                                             |
+                                |                                                                             |
+                                |   Its inverted due to going with openGL style and how top down bitmap stored|
+                                |(0,0)                                                                        |
+                                -------------------------------------------------------------------------------
+
+
+                            */
+                            // So take the current obtained point in the range of [-1,1]x[-1,1] and remap to [0,1]
+                            // First horizontal mapping
+                            // do barycentric interpolation 
+                            auto posInShadowMap =
+                                 (a[3] * shadowPos0 + a[2] * shadowPos1 + a[1] * shadowPos2) * (1.0f / bary_sum);
+                            
+                            auto sampleX = (posInShadowMap.x + 1) / 2.0f;
+                            auto sampleY = (posInShadowMap.y + 1) / 2.0f;
+                            sampleX      = std::clamp(sampleX, 0.0f, 1.0f);
+                            sampleY      = std::clamp(sampleY, 0.0f, 1.0f);
+                            // Retrieve the sample at that position
+                            uint32_t imgX           = sampleX * (platform.shadowMap.width - 1);
+                            uint32_t imgY           = sampleY * (platform.shadowMap.height - 1);
+
+                            float z_from_light_pers = platform.shadowMap.buffer[imgY * platform.shadowMap.width + imgX];
+                            // If they are the same point seen directly both by light and the eye, they must have same
+                            // depth value
+                            depth[0]       = z;
+                            auto current_z = std::clamp(posInShadowMap.z, 0.0f, 1.0f);
+                            // This calculation can be done incrementally, by calculating first at each vertex and then
+                            // incrementally calculating other things
+                            if (z_from_light_pers < current_z - bias)
+                            {
+                                // The current point must be in the shadow, so occlude it
+                                // Preferably use shadow correction factor, but its ok
+                                mem[0] = 0x00;
+                                mem[1] = 0xFF;
+                                mem[2] = 0xFF;
+                                mem[3] = 0x00;
+                            }
+                            else
+                            {
+                                mem[0] = rgb.z * shade;
+                                mem[1] = rgb.y * shade;
+                                mem[2] = rgb.x * shade;
+                                mem[3] = 0x00;
+                            }
                         }
                     }
 
@@ -395,11 +489,44 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                         {
                             // sample texture
                             auto rgb = texture.Sample(uv);
-                            depth[1] = z;
-                            mem[0]   = rgb.z * shade;
-                            mem[1]   = rgb.y * shade;
-                            mem[2]   = rgb.x * shade;
-                            mem[3]   = 0x00;
+                            auto posInShadowMap =
+                                (a[3] * shadowPos0 + a[2] * shadowPos1 + a[1] * shadowPos2) * (1.0f / bary_sum);
+
+                            auto sampleX            = (posInShadowMap.x + 1) / 2.0f;
+                            auto sampleY            = (posInShadowMap.y + 1) / 2.0f;
+                            sampleX                 = std::clamp(sampleX, 0.0f, 1.0f);
+                            sampleY                 = std::clamp(sampleY, 0.0f, 1.0f);
+                            uint32_t imgX           = sampleX * (platform.shadowMap.width - 1);
+                            uint32_t imgY           = sampleY * (platform.shadowMap.height - 1);
+
+                            float z_from_light_pers = platform.shadowMap.buffer[imgY * platform.shadowMap.width + imgX];
+                            // If they are the same point seen directly both by light and the eye, they must have same
+                            // depth value
+                            auto current_z = std::clamp(posInShadowMap.z, 0.0f, 1.0f);
+
+                            depth[1]       = z;
+                            if (z_from_light_pers < current_z - bias)
+                            {
+                                // The current point must be in the shadow, so occlude it
+                                // Preferably use shadow correction factor, but its ok
+                                mem[0] = 0x00;
+                                mem[1] = 0xFF;
+                                mem[2] = 0xFF;
+                                mem[3] = 0x00;
+                            }
+                            else
+                            {
+                                mem[0] = rgb.z * shade;
+                                mem[1] = rgb.y * shade;
+                                mem[2] = rgb.x * shade;
+                                mem[3] = 0x00;
+                            }
+
+                            // depth[1] = z;
+                            // mem[0]   = rgb.z * shade;
+                            // mem[1]   = rgb.y * shade;
+                            // mem[2]   = rgb.x * shade;
+                            // mem[3]   = 0x00;
                         }
                     }
                     if (mask & 0x02)
@@ -418,14 +545,48 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                         {
                             // sample texture
                             auto rgb = texture.Sample(uv);
-                            depth[2] = z;
-                            mem[0]   = rgb.z * shade;
-                            mem[1]   = rgb.y * shade;
-                            mem[2]   = rgb.x * shade;
-                            mem[3]   = 0x00;
+                            auto posInShadowMap =
+                                (a[3] * shadowPos0 + a[2] * shadowPos1 + a[1] * shadowPos2) * (1.0f / bary_sum);
+
+                            auto sampleX        = (posInShadowMap.x + 1) / 2.0f;
+                            auto sampleY        = (posInShadowMap.y + 1) / 2.0f;
+                            sampleX             = std::clamp(sampleX, 0.0f, 1.0f);
+                            sampleY             = std::clamp(sampleY, 0.0f, 1.0f);
+                            // Retrieve the sample at that position
+                            uint32_t imgX           = sampleX * (platform.shadowMap.width - 1);
+                            uint32_t imgY           = sampleY * (platform.shadowMap.height - 1);
+
+                            float z_from_light_pers = platform.shadowMap.buffer[imgY * platform.shadowMap.width + imgX];
+                            // If they are the same point seen directly both by light and the eye, they must have same
+                            // depth value
+                            auto current_z = std::clamp(posInShadowMap.z , 0.0f, 1.0f);
+
+                            depth[1] = z;
+                            if (z_from_light_pers < current_z - bias)
+                            {
+                                // The current point must be in the shadow, so occlude it
+                                // Preferably use shadow correction factor, but its ok
+                                mem[0] = 0x00;
+                                mem[1] = 0xFF;
+                                mem[2] = 0xFF;
+                                mem[3] = 0x00;
+                            }
+                            else
+                            {
+                                mem[0] = rgb.z * shade;
+                                mem[1] = rgb.y * shade;
+                                mem[2] = rgb.x * shade;
+                                mem[3] = 0x00;
+                            }
+
+                            /*  depth[2] = z;
+                              mem[0]   = rgb.z * shade;
+                              mem[1]   = rgb.y * shade;
+                              mem[2]   = rgb.x * shade;
+                              mem[3]   = 0x00;*/
                         }
                     }
-                    if (mask & 0x01)
+                     if (mask & 0x01)
                     {
                         // plot fourth pixel
                         mem            = off + 12;
@@ -439,13 +600,48 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                         auto uv = (a[3] * v0.texCoord + a[2] * v1.texCoord + a[1] * v2.texCoord) * (1.0f / bary_sum);
                         if (z < depth[3])
                         {
-                            // sample texture
                             auto rgb = texture.Sample(uv);
-                            depth[3] = z;
-                            mem[0]   = rgb.z * shade;
-                            mem[1]   = rgb.y * shade;
-                            mem[2]   = rgb.x * shade;
-                            mem[3]   = 0x00;
+                            auto pixelPos =
+                                (a[3] * v0.frag_pos + a[2] * v1.frag_pos + a[1] * v2.frag_pos) * (1.0f / bary_sum);
+
+                            auto posInShadowMap = lightOrtho * lightView * pixelPos;
+
+                            auto sampleX        = (posInShadowMap.x + 1) / 2.0f;
+                            auto sampleY        = (posInShadowMap.y + 1) / 2.0f;
+                            sampleX             = std::clamp(sampleX, 0.0f, 1.0f);
+                            sampleY             = std::clamp(sampleY, 0.0f, 1.0f);
+                            // Retrieve the sample at that position
+                            uint32_t imgX           = sampleX * (platform.shadowMap.width - 1);
+                            uint32_t imgY           = sampleY * (platform.shadowMap.height - 1);
+
+                            float z_from_light_pers = platform.shadowMap.buffer[imgY * platform.shadowMap.width + imgX];
+                            // If they are the same point seen directly both by light and the eye, they must have same
+                            // depth value
+                            auto current_z = std::clamp(posInShadowMap.z, 0.0f, 1.0f);
+
+                            depth[3]       = z;
+                            if (z_from_light_pers < current_z - bias)
+                            {
+                                // The current point must be in the shadow, so occlude it
+                                // Preferably use shadow correction factor, but its ok
+                                mem[0] = 0x00;
+                                mem[1] = 0xFF;
+                                mem[2] = 0xFF;
+                                mem[3] = 0x00;
+                            }
+                            else
+                            {
+                                mem[0] = rgb.z * shade;
+                                mem[1] = rgb.y * shade;
+                                mem[2] = rgb.x * shade;
+                                mem[3] = 0x00;
+                            }
+
+                            /*  depth[3] = z;
+                              mem[0]   = rgb.z * shade;
+                              mem[1]   = rgb.y * shade;
+                              mem[2]   = rgb.x * shade;
+                              mem[3]   = 0x00;*/
                         }
                     }
                 }
@@ -703,7 +899,8 @@ static void ParallelRenderableDraw(RenderList &renderables, MemAlloc<Pipeline3D:
 
     // Generate shadow maps
     //// set up orthographic projection matrix that covers the square field of dimension 5 x 5
-    auto lightOrtho = OrthoProjection(-4.0f, 4.0f, -4.0f, 4.0f, -5.0f, 10.0f);
+
+    auto lightOrtho = OrthoProjection(-5.0f, 5.0f, -5.0f, 5.0f, -10.0f, 10.0f);
     // assume light position is directly above the origin, we have
     auto light     = get_light_source();
     auto lightView = lookAtMatrix(light.position, Vec3f(0.0f, 0.0f, 0.0f), Vec3f(0.0f, 1.0f, 0.0f));

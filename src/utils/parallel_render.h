@@ -85,3 +85,62 @@ using namespace Pipeline3D;
 void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAttrib3D const &v2,
                    MemAlloc<Pipeline3D::VertexAttrib3D> &allocator, int32_t XMinBound, int32_t XMaxBound);
 }
+
+// C++ is damn powerful/flexible.
+// Using two solutions to LightingBranching 
+
+// Using template 
+
+ struct LightingBranching
+{
+    constexpr static struct
+    {
+        using shadow = std::false_type;
+    } NoShadow = {};
+    constexpr static struct
+    {
+        using shadow = std::true_type;
+    } Shadow = {};
+};
+
+ template <typename T>
+ constexpr bool ShadowChecker(T const& val)
+{
+     return T::shadow::value;
+ }
+
+ static_assert(ShadowChecker(LightingBranching::NoShadow) == false);
+
+ // Now same solution without using template 
+ // calling virtual function at compile time 
+
+ struct LightingBrancher
+ {
+     constexpr virtual bool castShadow() const = 0;
+ };
+
+ constexpr struct NoShadow : LightingBrancher
+ {
+     using shadow = std::false_type;
+     constexpr virtual bool castShadow() const override
+     {
+         return shadow::value;
+     }
+ } NoShadow;
+
+ constexpr struct Shadow : LightingBrancher
+ {
+     using shadow = std::true_type;
+     constexpr virtual bool castShadow() const override
+     {
+         return shadow::value;
+     }
+ } Shadow;
+
+ constexpr bool ShadowChecker(LightingBrancher const &val)
+ {
+     return val.castShadow();
+ }
+
+ // check passed 
+ static_assert(ShadowChecker(NoShadow)==false);
