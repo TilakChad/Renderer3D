@@ -79,7 +79,7 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     auto normal   = Vec3f::Cross(dir1 - dir0, dir2 - dir1);
     auto centroid = (v0.frag_pos + v1.frag_pos + v2.frag_pos) * (1.0f / 3.0f);
     auto flat     = normal.unit().dot((Vec3f(light.position) - centroid).unit());
-    auto shade    = vMax(0.0f, flat) * 0.8f;
+    auto shade    = vMax(0.0f, flat) * 0.9f;
     // Not going to implement Gouraud shading -> In Gouraud shading lighting information are calculated at each vertex
     // and barycentric interpolated to each fragment pos
     //
@@ -93,9 +93,9 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
     // directional impact, ambient contribution and phong specular on pex pixel basis
 
     // Now to the depth mapping
-    auto lightOrtho = OrthoProjection(-5.0f, 5.0f, -5.0f, 5.0f, -10.0f, 10.0f);
+    auto lightOrtho = OrthoProjection(-5.0f, 5.0f, -5.0f, 5.0f, -5.0f, 5.0f);
     // clashes with SIMD lookAtMatrix
-    auto lightView = ::lookAtMatrix(light.position, Vec3f(0.0f, 0.0f, 0.0f), Vec3f(0.0f, 1.0f, 0.0f));
+    auto lightView  = ::lookAtMatrix(light.position, Vec3f(0.0f, 0.0f, 0.0f), Vec3f(0.0f, 1.0f, 0.0f));
 
     auto shadowPos0 = lightOrtho * lightView * v0.frag_pos;
     auto shadowPos1 = lightOrtho * lightView * v1.frag_pos;
@@ -434,10 +434,10 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             */
                             // So take the current obtained point in the range of [-1,1]x[-1,1] and remap to [0,1]
                             // First horizontal mapping
-                            // do barycentric interpolation 
+                            // do barycentric interpolation
                             auto posInShadowMap =
-                                 (a[3] * shadowPos0 + a[2] * shadowPos1 + a[1] * shadowPos2) * (1.0f / bary_sum);
-                            
+                                (a[3] * shadowPos0 + a[2] * shadowPos1 + a[1] * shadowPos2) * (1.0f / bary_sum);
+
                             auto sampleX = (posInShadowMap.x + 1) / 2.0f;
                             auto sampleY = (posInShadowMap.y + 1) / 2.0f;
                             sampleX      = std::clamp(sampleX, 0.0f, 1.0f);
@@ -453,22 +453,18 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             auto current_z = std::clamp(posInShadowMap.z, 0.0f, 1.0f);
                             // This calculation can be done incrementally, by calculating first at each vertex and then
                             // incrementally calculating other things
+                            auto nshade = shade;
                             if (z_from_light_pers < current_z - bias)
                             {
                                 // The current point must be in the shadow, so occlude it
                                 // Preferably use shadow correction factor, but its ok
-                                mem[0] = 0x00;
-                                mem[1] = 0xFF;
-                                mem[2] = 0xFF;
-                                mem[3] = 0x00;
+                                nshade = 0.2f;
                             }
-                            else
-                            {
-                                mem[0] = rgb.z * shade;
-                                mem[1] = rgb.y * shade;
-                                mem[2] = rgb.x * shade;
-                                mem[3] = 0x00;
-                            }
+
+                            mem[0] = rgb.z * nshade;
+                            mem[1] = rgb.y * nshade;
+                            mem[2] = rgb.x * nshade;
+                            mem[3] = 0x00;
                         }
                     }
 
@@ -505,28 +501,15 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             auto current_z = std::clamp(posInShadowMap.z, 0.0f, 1.0f);
 
                             depth[1]       = z;
+                            auto nshade    = shade;
                             if (z_from_light_pers < current_z - bias)
                             {
-                                // The current point must be in the shadow, so occlude it
-                                // Preferably use shadow correction factor, but its ok
-                                mem[0] = 0x00;
-                                mem[1] = 0xFF;
-                                mem[2] = 0xFF;
-                                mem[3] = 0x00;
+                                nshade = 0.2f;
                             }
-                            else
-                            {
-                                mem[0] = rgb.z * shade;
-                                mem[1] = rgb.y * shade;
-                                mem[2] = rgb.x * shade;
-                                mem[3] = 0x00;
-                            }
-
-                            // depth[1] = z;
-                            // mem[0]   = rgb.z * shade;
-                            // mem[1]   = rgb.y * shade;
-                            // mem[2]   = rgb.x * shade;
-                            // mem[3]   = 0x00;
+                            mem[0] = rgb.z * nshade;
+                            mem[1] = rgb.y * nshade;
+                            mem[2] = rgb.x * nshade;
+                            mem[3] = 0x00;
                         }
                     }
                     if (mask & 0x02)
@@ -548,10 +531,10 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             auto posInShadowMap =
                                 (a[3] * shadowPos0 + a[2] * shadowPos1 + a[1] * shadowPos2) * (1.0f / bary_sum);
 
-                            auto sampleX        = (posInShadowMap.x + 1) / 2.0f;
-                            auto sampleY        = (posInShadowMap.y + 1) / 2.0f;
-                            sampleX             = std::clamp(sampleX, 0.0f, 1.0f);
-                            sampleY             = std::clamp(sampleY, 0.0f, 1.0f);
+                            auto sampleX = (posInShadowMap.x + 1) / 2.0f;
+                            auto sampleY = (posInShadowMap.y + 1) / 2.0f;
+                            sampleX      = std::clamp(sampleX, 0.0f, 1.0f);
+                            sampleY      = std::clamp(sampleY, 0.0f, 1.0f);
                             // Retrieve the sample at that position
                             uint32_t imgX           = sampleX * (platform.shadowMap.width - 1);
                             uint32_t imgY           = sampleY * (platform.shadowMap.height - 1);
@@ -559,34 +542,19 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             float z_from_light_pers = platform.shadowMap.buffer[imgY * platform.shadowMap.width + imgX];
                             // If they are the same point seen directly both by light and the eye, they must have same
                             // depth value
-                            auto current_z = std::clamp(posInShadowMap.z , 0.0f, 1.0f);
+                            auto current_z = std::clamp(posInShadowMap.z, 0.0f, 1.0f);
 
-                            depth[1] = z;
+                            depth[2]       = z;
+                            auto nshade    = shade;
                             if (z_from_light_pers < current_z - bias)
-                            {
-                                // The current point must be in the shadow, so occlude it
-                                // Preferably use shadow correction factor, but its ok
-                                mem[0] = 0x00;
-                                mem[1] = 0xFF;
-                                mem[2] = 0xFF;
-                                mem[3] = 0x00;
-                            }
-                            else
-                            {
-                                mem[0] = rgb.z * shade;
-                                mem[1] = rgb.y * shade;
-                                mem[2] = rgb.x * shade;
-                                mem[3] = 0x00;
-                            }
-
-                            /*  depth[2] = z;
-                              mem[0]   = rgb.z * shade;
-                              mem[1]   = rgb.y * shade;
-                              mem[2]   = rgb.x * shade;
-                              mem[3]   = 0x00;*/
+                                nshade = 0.2f;
+                            mem[0] = rgb.z * nshade;
+                            mem[1] = rgb.y * nshade;
+                            mem[2] = rgb.x * nshade;
+                            mem[3] = 0x00;
                         }
                     }
-                     if (mask & 0x01)
+                    if (mask & 0x01)
                     {
                         // plot fourth pixel
                         mem            = off + 12;
@@ -601,15 +569,13 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                         if (z < depth[3])
                         {
                             auto rgb = texture.Sample(uv);
-                            auto pixelPos =
-                                (a[3] * v0.frag_pos + a[2] * v1.frag_pos + a[1] * v2.frag_pos) * (1.0f / bary_sum);
+                            auto posInShadowMap =
+                                (a[3] * shadowPos0 + a[2] * shadowPos1 + a[1] * shadowPos2) * (1.0f / bary_sum);
 
-                            auto posInShadowMap = lightOrtho * lightView * pixelPos;
-
-                            auto sampleX        = (posInShadowMap.x + 1) / 2.0f;
-                            auto sampleY        = (posInShadowMap.y + 1) / 2.0f;
-                            sampleX             = std::clamp(sampleX, 0.0f, 1.0f);
-                            sampleY             = std::clamp(sampleY, 0.0f, 1.0f);
+                            auto sampleX = (posInShadowMap.x + 1) / 2.0f;
+                            auto sampleY = (posInShadowMap.y + 1) / 2.0f;
+                            sampleX      = std::clamp(sampleX, 0.0f, 1.0f);
+                            sampleY      = std::clamp(sampleY, 0.0f, 1.0f);
                             // Retrieve the sample at that position
                             uint32_t imgX           = sampleX * (platform.shadowMap.width - 1);
                             uint32_t imgY           = sampleY * (platform.shadowMap.height - 1);
@@ -620,28 +586,13 @@ static void Rasteriser(Pipeline3D::RasterInfo const &v0, Pipeline3D::RasterInfo 
                             auto current_z = std::clamp(posInShadowMap.z, 0.0f, 1.0f);
 
                             depth[3]       = z;
+                            auto nshade    = shade;
                             if (z_from_light_pers < current_z - bias)
-                            {
-                                // The current point must be in the shadow, so occlude it
-                                // Preferably use shadow correction factor, but its ok
-                                mem[0] = 0x00;
-                                mem[1] = 0xFF;
-                                mem[2] = 0xFF;
-                                mem[3] = 0x00;
-                            }
-                            else
-                            {
-                                mem[0] = rgb.z * shade;
-                                mem[1] = rgb.y * shade;
-                                mem[2] = rgb.x * shade;
-                                mem[3] = 0x00;
-                            }
-
-                            /*  depth[3] = z;
-                              mem[0]   = rgb.z * shade;
-                              mem[1]   = rgb.y * shade;
-                              mem[2]   = rgb.x * shade;
-                              mem[3]   = 0x00;*/
+                                nshade = 0.2f;
+                            mem[0] = rgb.z * nshade;
+                            mem[1] = rgb.y * nshade;
+                            mem[2] = rgb.x * nshade;
+                            mem[3] = 0x00;
                         }
                     }
                 }
@@ -886,22 +837,12 @@ static void Clip3D(VertexAttrib3D const &v0, VertexAttrib3D const &v1, VertexAtt
     }
 }
 
-static void ParallelRenderableDraw(RenderList &renderables, MemAlloc<Pipeline3D::VertexAttrib3D> &allocator,
-                                   int32_t XMinBound, int32_t XMaxBound)
+static void ParallelShadowMapper(RenderList &renderables, MemAlloc<Pipeline3D::VertexAttrib3D> &allocator,
+                                 int32_t XMinBound, int32_t XMaxBound)
 {
-
     VertexAttrib3D v0, v1, v2;
-    // Run the whole pipeline simultaneously on multiple threads
-    auto device = GetRasteriserDevice();
-    // For depth mapping, it should be made 2 pass rendering ..
-    // We can call 2 pass on per triangle basis or as a whole
-    // Lets try the whole pipeline method first
-
-    // Generate shadow maps
-    //// set up orthographic projection matrix that covers the square field of dimension 5 x 5
-
-    auto lightOrtho = OrthoProjection(-5.0f, 5.0f, -5.0f, 5.0f, -10.0f, 10.0f);
-    // assume light position is directly above the origin, we have
+    auto           lightOrtho = OrthoProjection(-5.0f, 5.0f, -5.0f, 5.0f, -5.0f, 5.0f);
+    // assume light position is directly above the origin, we haves
     auto light     = get_light_source();
     auto lightView = lookAtMatrix(light.position, Vec3f(0.0f, 0.0f, 0.0f), Vec3f(0.0f, 1.0f, 0.0f));
     for (auto const &renderable : renderables.Renderables)
@@ -920,6 +861,51 @@ static void ParallelRenderableDraw(RenderList &renderables, MemAlloc<Pipeline3D:
             ShadowMapper::Clip3D(v0, v1, v2, allocator, XMinBound, XMaxBound);
         }
     }
+}
+
+void ParallelTypeErasedShadow(void *arg)
+{
+    // Retrieve back the type erased information
+    auto drawArgs = static_cast<Parallel::ParallelRenderer::ParallelThreadArgStruct *>(arg);
+    /*ParallelDraw(*drawArgs->vertex_vector, *drawArgs->index_vector, *drawArgs->matrix, *drawArgs->allocator,
+                 drawArgs->XMinBound, drawArgs->XMaxBound);*/
+    ParallelShadowMapper(*drawArgs->render_list, *drawArgs->allocator, drawArgs->XMinBound, drawArgs->XMaxBound);
+}
+
+
+static void ParallelRenderableDraw(RenderList &renderables, MemAlloc<Pipeline3D::VertexAttrib3D> &allocator,
+                                   int32_t XMinBound, int32_t XMaxBound)
+{
+    VertexAttrib3D v0, v1, v2;
+    // Run the whole pipeline simultaneously on multiple threads
+    auto device = GetRasteriserDevice();
+    // For depth mapping, it should be made 2 pass rendering ..
+    // We can call 2 pass on per triangle basis or as a whole
+    // Lets try the whole pipeline method first
+
+    // Generate shadow maps
+    //// set up orthographic projection matrix that covers the square field of dimension 5 x 5
+
+    // auto lightOrtho = OrthoProjection(-5.0f, 5.0f, -5.0f, 5.0f, -5.0f, 5.0f);
+    //// assume light position is directly above the origin, we have
+    // auto light     = get_light_source();
+    // auto lightView = lookAtMatrix(light.position, Vec3f(0.0f, 0.0f, 0.0f), Vec3f(0.0f, 1.0f, 0.0f));
+    // for (auto const &renderable : renderables.Renderables)
+    //{
+    //     for (std::size_t i = 0; i < renderable.indices.size(); i += 3)
+    //     {
+    //         allocator.resource->reset();
+    //         v0          = renderable.vertices[renderable.indices[i]];
+    //         v1          = renderable.vertices[renderable.indices[i + 1]];
+    //         v2          = renderable.vertices[renderable.indices[i + 2]];
+
+    //        v0.Position = lightOrtho * lightView * renderable.model_transform * v0.Position;
+    //        v1.Position = lightOrtho * lightView * renderable.model_transform * v1.Position;
+    //        v2.Position = lightOrtho * lightView * renderable.model_transform * v2.Position;
+
+    //        ShadowMapper::Clip3D(v0, v1, v2, allocator, XMinBound, XMaxBound);
+    //    }
+    //}
 
     for (auto const &renderable : renderables.Renderables)
     {
@@ -1000,10 +986,24 @@ void ParallelRenderer::AlternativeParallelRenderablePipeline(
         /*task = Alternative::ThreadPool::AlternativeTaskDesc{
             false, Alternative::ThreadPool::ThreadPoolFunc(Parallel::ParallelTypeErasedDraw, &args[count++])};*/
         task.completed = false;
-        task.task      = Alternative::ThreadPool::ThreadPoolFunc(Parallel::ParallelTypeErasedDraw, &args[count++]);
+        // task.task      = Alternative::ThreadPool::ThreadPoolFunc(Parallel::ParallelTypeErasedDraw, &args[count++]);
+        task.task      = Alternative::ThreadPool::ThreadPoolFunc(Parallel::ParallelTypeErasedShadow, &args[count++]);
     }
+    // Every thread must wait until the generation of the shadow mapping
 
     thread_pool.started(&waiter);
+    thread_pool.wait_till_finished();
+
+    std::latch newwaiter(no_of_partitions);
+    count = 0u;
+    for (auto &task : *thread_pool.get_passive_ptr())
+    {
+        /*task = Alternative::ThreadPool::AlternativeTaskDesc{
+            false, Alternative::ThreadPool::ThreadPoolFunc(Parallel::ParallelTypeErasedDraw, &args[count++])};*/
+        task.completed = false;
+        task.task      = Alternative::ThreadPool::ThreadPoolFunc(Parallel::ParallelTypeErasedDraw, &args[count++]);
+    }
+    thread_pool.started(&newwaiter);
     thread_pool.wait_till_finished();
 }
 

@@ -364,9 +364,9 @@ class ThreadPool
     std::vector<std::thread> worker_threads;
     std::atomic<bool>        done = true;
 
-    constexpr static size_t  N = 4;
 
   public:
+    constexpr static size_t  N    = 6;
     std::latch *latch       = nullptr;
     using ThreadPoolFuncPtr = void (*)(void *); // Function returning void and taking void ptr
     struct ThreadPoolFunc
@@ -386,7 +386,7 @@ class ThreadPool
         std::atomic<bool> completed = true;
         ThreadPoolFunc    task;
         AlternativeTaskDesc() = default;
-        AlternativeTaskDesc(bool b, const ThreadPoolFunc& fn) : completed{b}, task{fn}
+        AlternativeTaskDesc(bool b, const ThreadPoolFunc &fn) : completed{b}, task{fn}
         {
         }
         AlternativeTaskDesc(const AlternativeTaskDesc &lhs)
@@ -408,15 +408,15 @@ class ThreadPool
 
   public:
     // Since above vectors are guarranted to never resize, task_ptr is always valid
-    std::atomic<std::vector<AlternativeTaskDesc> *> task_ptrActive;
-    std::atomic<std::vector<AlternativeTaskDesc> *> task_ptrPassive;
+    std::vector<AlternativeTaskDesc> *task_ptrActive;
+    std::vector<AlternativeTaskDesc> *task_ptrPassive;
 
     ThreadPool() noexcept
     {
         Task1 = std::vector<AlternativeTaskDesc>(N, AlternativeTaskDesc{});
         Task2 = std::vector<AlternativeTaskDesc>(N, AlternativeTaskDesc{});
-        task_ptrActive.store(&Task1);
-        task_ptrPassive.store(&Task2);
+        task_ptrActive = &Task1;
+        task_ptrPassive = &Task2;
         for (unsigned int i = 0; i < N; ++i)
             worker_threads.push_back(std::thread{&std::remove_reference_t<decltype(*this)>::worker_threads_func, this});
     }
@@ -428,16 +428,16 @@ class ThreadPool
     {
         while (done.load())
         {
-            auto &current_pool = *(task_ptrActive.load());
+            auto &current_pool = *task_ptrActive;
             for (auto &work : current_pool)
             {
-                if (!work.completed.exchange(true))
+                if (!work.completed.exchange(true,std::memory_order_acquire))
                 {
                     work.task();
                     latch->count_down();
                 }
             }
-            std::this_thread::yield();
+            // std::this_thread::yield();
         }
     }
 
@@ -469,11 +469,13 @@ class ThreadPool
     }
     void started(std::latch *wait_till)
     {
-        // The swap here needn't be atomic since only active will be used for the time being by running threads 
-        
-        auto temp = task_ptrActive.exchange(task_ptrPassive);
-        task_ptrPassive.exchange(temp);
-        latch = wait_till;
+        // The swap here needn't be atomic since only active will be used for the time being by running threads
+        auto temp = task_ptrActive;
+        /*auto temp = task_ptrActive.exchange(task_ptrPassive);
+        task_ptrPassive.exchange(temp);*/
+        task_ptrActive  = task_ptrPassive;
+        task_ptrPassive = temp;
+        latch           = wait_till;
     }
 
     ~ThreadPool()

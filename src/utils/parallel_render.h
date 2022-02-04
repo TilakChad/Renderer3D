@@ -15,7 +15,7 @@ class ParallelRenderer
     // Each time screen buffer changes ParallelRendered need to be remodified
     // Only the rasteriser stage will be parallelized for now
     // I guess it should take thread pool as input to initiate parallel operation during Rasterisation
-    constexpr static uint32_t no_of_partitions = 6; // or number of threads
+    constexpr static uint32_t no_of_partitions = Alternative::ThreadPool::N; // or number of threads
     enum class PartitionType
     {
         HORIZONTAL,

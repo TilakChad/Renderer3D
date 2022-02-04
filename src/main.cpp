@@ -38,16 +38,17 @@ std::vector<MonotonicMemoryResource>              resource;
 Alternative::ThreadPool    thread_pool{};
 Parallel::ParallelRenderer parallel_renderer;
 
-// Leave ray tracer for now and continue on rasteriser for sometime
-// TODO : fragment  shader emulation
-// TODO : Vectorize rasterisation code and matrix operations
+// Small physics simulation demo
+PhysicsSimulation::Sphere sphereA, sphereB;
+PhysicsSimulation::Plane  plane;
 
-Vec3f   cameraPosition = Vec3f();
-float   yaw            = 0;
-float   pitch          = 0;
-int32_t xPos, yPos;
+Vec3f                     cameraPosition = Vec3f();
+float                     yaw            = 0;
+float                     pitch          = 0;
+int32_t                   xPos, yPos;
 
 // TODO : Shadow casting using depth mapping and simple sphere simulations in 3D
+// Now initiating the 3D sphere collisions
 
 static RLights current_light{};
 
@@ -83,7 +84,7 @@ Vec3f getFrontVector(Platform *platform)
     xPos                          = platform->Mouse.xpos;
     yPos                          = platform->Mouse.ypos;
 
-    constexpr float move_constant = 50.0f;
+    constexpr float move_constant = 20.0f;
     auto            fVector       = frontVector.unit();
 
     if (platform->bKeyPressed(Keys::W))
@@ -118,9 +119,9 @@ void RendererMainLoop(Platform *platform)
             std::vector<uint32_t>                   indices{};
 
             model.LoadGeometry(vertices, indices);
-            //Renderables.AddRenderable(RenderInfo(std::move(vertices), std::move(indices),
-            //                                     RenderDevice::MergeMode::COLOR_MODE,
-            //                                     model.Materials.at(0).texture_id));
+            // Renderables.AddRenderable(RenderInfo(std::move(vertices), std::move(indices),
+            //                                      RenderDevice::MergeMode::COLOR_MODE,
+            //                                      model.Materials.at(0).texture_id));
             /*model2.LoadGeometry(GeoSphVertices, GeoSphVerticesIndex);*/
             // platform->SetOpacity(1.0f);
             // fancyTexture = model.Materials.at(0).texture_id;
@@ -136,6 +137,11 @@ void RendererMainLoop(Platform *platform)
             parallel_renderer = Parallel::ParallelRenderer(platform->colorBuffer.width, platform->colorBuffer.height);
 
             // Create a checked texture
+            plane.coord[0] = Vec3f(-5.0f, 0.0f, 5.0f);
+            plane.coord[1] = Vec3f(5.0f, 0.0f, 5.0f);
+            plane.coord[2] = Vec3f(5.0f, 0.0f, -5.0f);
+            plane.coord[3] = Vec3f(-5.0f, 0.0f, -5.0f);
+
             Pipeline3D::VertexAttrib3D v0, v1, v2, v3;
             v0.Position = Vec4f(-5.0f, 0.0f, 5.0f, 1.0f);
             v0.Color    = Vec4f(1.0f, 0.0f, 0.0f, 0.0f);
@@ -191,15 +197,23 @@ void RendererMainLoop(Platform *platform)
                                                  RenderDevice::MergeMode::TEXTURE_MODE, fancyTexture));
 
             // Renderables.AddRenderable(Shape::Cylinder::offload(1.0f, 2.0f));
+            Renderables.AddRenderable(Shape::Sphere::offload(1.0f,0.55f,0.55f));
             Renderables.AddRenderable(Shape::Sphere::offload(1.0f));
 
-            current_light = RLights{.position  = Vec4f(0.0f, 2.0f, 3.0f, 1.0f),
+            current_light = RLights{.position  = Vec4f(4.0f, 6.0f, 0.0f, 1.0f),
                                     .color     = Vec4f(1.0f, 215.0f / 255.0f, 0x00, 0x00),
                                     .intensity = 1.0f};
         }
         bckg.CreateBackgroundTexture("../img103.png");
         bckg.SampleForCurrentFrameBuffer(platform, false);
-        cameraPosition = Vec3f(0.0f, 0.0f, 6.0f);
+        cameraPosition    = Vec3f(0.0f, 8.0f, 6.0f);
+        sphereA.radius    = 0.5f;
+        sphereA.center    = Vec3f(0.0f, 8.0f, -10.0f);
+        sphereA.direction = Vec3f(0.0f, -3.5f, 5.0f);
+
+        sphereB.radius    = 0.5f;
+        sphereB.center    = Vec3f(0.0f, 2.0f, 5.0f);
+        sphereB.direction = Vec3f(0.0f, 0.0f, -1.0f);
     }
     else if (platform->bSizeChanged)
     {
@@ -216,14 +230,18 @@ void RendererMainLoop(Platform *platform)
     // current_light.position.y += 0.001f;
 
     time += platform->deltaTime;
+    platform->deltaTime /= 2.0f;
     // RenderBackground(bckg);
     FastClearColor(0x10, 0x10, 0x10, 0x00);
     using namespace Pipeline3D;
     Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f, 20.0f);
     /*auto transform = OrthoProjection(-5.0f, 5.0f, -5.0f, 5.0f, -5.0f, 10.0f);
      */
+    sphereA.resolve_collision(sphereB, platform->deltaTime);
+    plane.IntersectAndResolve(sphereA,platform->deltaTime);
     ClearDepthBuffer();
-    auto model = Mat4f(1.0f).translate(Vec3f(0.0f, 1.0f, 0.0f)).rotateY(time); //.rotateX(time / 2.0f);
+    auto model = Mat4f(1.0f);
+    // .rotateY(time); //.rotateX(time / 2.0f);
     // Math is magic
     auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + getFrontVector(platform), Vec3f(0.0f, 1.0f, 0.0f));
     // auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + Vec3f(0.0f, 0.0f, -1.0f), Vec3f(0.0f, 1.0f,
@@ -237,8 +255,11 @@ void RendererMainLoop(Platform *platform)
         renderable.scene_transform = transform * lookMatrix;
         // renderable.model_transform = model;
     }
-    Renderables.Renderables.at(1).model_transform = model.scale({0.5f,0.5f,0.5f});
     Renderables.Renderables.at(0).model_transform = Mat4f(1.0f);
+   Renderables.Renderables.at(1).model_transform =
+        model.translate(sphereA.simulate(platform->deltaTime)).rotateY(time / 5.0f).scale(Vec3f(sphereA.radius));
+    Renderables.Renderables.at(2).model_transform =
+        model.translate(sphereB.simulate(platform->deltaTime)).rotateY(time / 5.0f).scale(Vec3f(sphereB.radius));
     // Renderables.Renderables.at(2).model_transform = Mat4f(1.0f).translate({1.0f, 1.0f, -0.5f});
 
     parallel_renderer.AlternativeParallelRenderablePipeline(thread_pool, Renderables, MemAllocator);
@@ -248,7 +269,7 @@ void RendererMainLoop(Platform *platform)
     // with directional shadow casting ability
     float *shadow = platform->shadowMap.buffer;
 
-    if (0)
+    if constexpr (0)
         for (int h = 0; h < platform->shadowMap.height; ++h)
         {
             for (int w = 0; w < platform->shadowMap.width; ++w)
