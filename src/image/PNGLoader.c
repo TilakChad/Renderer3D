@@ -391,14 +391,13 @@ uint8_t paethPredictor(uint8_t a, uint8_t b, uint8_t c)
     uint32_t pa = abs(p - a);
     uint32_t pb = abs(p - b);
     uint32_t pc = abs(p - c);
-    uint8_t  pr;
+    uint8_t  pr = c;
 
     if (pa <= pb && pa <= pc)
         pr = a;
     else if (pb <= pc)
         pr = b;
-    else
-        pr = c;
+
     return pr;
 }
 

@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 
-static RenderDevice                Device;
+static thread_local RenderDevice                Device;
 
 extern Parallel::ParallelRenderer &get_current_parallel_renderer();
 extern ThreadPool                 &get_current_thread_pool();

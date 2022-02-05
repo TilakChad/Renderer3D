@@ -4,6 +4,150 @@
 #include "../maths/vec.hpp"
 #include <vector>
 
+
+
+namespace Shape
+{
+
+class Shapes
+{
+};
+class Cylinder
+{
+  public:
+    static RenderInfo offload(float radius, float height)
+    {
+        std::vector<Pipeline3D::VertexAttrib3D> vertices;
+        std::vector<uint32_t>                   indices;
+
+        constexpr float                         pi    = 3.141592f;
+        float                                   hStep = 0.25f;
+        float                                   tStep = 0.25f;
+
+        float                                   h     = 0;
+        float                                   t     = 0;
+        uint32_t                                index = 0;
+
+        while (h < height)
+        {
+            for (t = 0; t < 2 * pi; t += tStep)
+            {
+                Pipeline3D::VertexAttrib3D v0;
+                v0.Position = Vec4f(radius * cos(t), h, radius * sin(t), 1.0f);
+                v0.Color    = Vec4f(0.4f, 0.4f, 0.4f, 0.0f);
+                vertices.push_back(v0);
+                v0.Position = Vec4f(radius * cos(t + tStep), h, radius * sin(t + tStep), 1.0f);
+                // v0.Color    = Vec4f(0.0f, 1.0f, 0.0f, 0.0f);
+                vertices.push_back(v0);
+                v0.Position = Vec4f(radius * cos(t + tStep), h + hStep, radius * sin(t + tStep), 1.0f);
+                // v0.Color    = Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
+                vertices.push_back(v0);
+                v0.Position = Vec4f(radius * cos(t), h + hStep, radius * sin(t), 1.0f);
+                // v0.Color    = Vec4f(1.0f, 1.0f, 0.0f, 0.0f);
+                vertices.push_back(v0);
+                indices.insert(indices.end(), {index + 2, index + 1, index, index + 3, index + 2, index});
+                index += 4;
+            }
+            h = h + hStep;
+        }
+        return RenderInfo(std::move(vertices), std::move(indices), RenderDevice::MergeMode::COLOR_MODE, 0);
+    }
+};
+class Sphere
+{
+  public:
+    static RenderInfo offload(float radius, float phiStep = 0.25f, float theStep = 0.25f, Vec4f color = Vec4f(0.4f,0.4f,0.4f,0.0f))
+    {
+        // oof .. wasted too much time here due to incorrect winding order
+        std::vector<Pipeline3D::VertexAttrib3D> vertices;
+        std::vector<uint32_t>                   indices;
+
+        constexpr float                         pi    = 3.14159265f;
+
+        uint32_t                                index = 0;
+
+        for (float x = pi / 2; x >= -pi / 2; x -= theStep)
+        {
+            float theta = pi / 2 - x;
+            for (float phi = -pi; phi <= pi; phi += phiStep)
+            {
+                Pipeline3D::VertexAttrib3D v0;
+                v0.Position =
+                    Vec4f(radius * sin(theta) * cos(phi), radius * cos(theta), radius * sin(theta) * sin(phi), 1.0f);
+                v0.Color = color;
+                vertices.push_back(v0);
+                v0.Position = Vec4f(radius * sin(theta - theStep) * cos(phi), radius * cos(theta - theStep),
+                                    radius * sin(theta - theStep) * sin(phi), 1.0f);
+
+                // v0.Color    = Vec4f(0.0f, 1.0f, 0.0f, 0.0f);
+                vertices.push_back(v0);
+                v0.Position = Vec4f(radius * sin(theta - theStep) * cos(phi + phiStep), radius * cos(theta - theStep),
+                                    radius * sin(theta - theStep) * sin(phi + phiStep), 1.0f);
+
+                // v0.Color    = Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
+                vertices.push_back(v0);
+                v0.Position = Vec4f(radius * sin(theta) * cos(phi + phiStep), radius * cos(theta),
+                                    radius * sin(theta) * sin(phi + phiStep), 1.0f);
+
+                // v0.Color    = Vec4f(1.0f, 1.0f, 0.0f, 0.0f);
+                vertices.push_back(v0);
+
+                indices.insert(indices.end(), {index, index + 1, index + 2, index + 2, index + 3, index});
+
+                index += 4;
+            }
+        }
+
+        return RenderInfo(std::move(vertices), std::move(indices), RenderDevice::MergeMode::COLOR_MODE, 0);
+    }
+};
+class Plane
+{
+};
+class Cone
+{
+  public:
+    static RenderInfo offload(float height, float radius)
+    {
+        std::vector<Pipeline3D::VertexAttrib3D> vertices;
+        std::vector<uint32_t>                   indices;
+
+        constexpr float                         pi    = 3.141592f;
+        float                                   hStep = 0.5f;
+        float                                   tStep = 0.5f;
+
+        float                                   h     = 0;
+        float                                   t     = 0;
+        uint32_t                                index = 0;
+
+        while (h < height)
+        {
+            auto z = height - h;
+            for (t = 0; t < 2 * pi; t += tStep)
+            {
+                Pipeline3D::VertexAttrib3D v0;
+                v0.Position = Vec4f(z * cos(t), h, z * sin(t), 1.0f);
+                v0.Color    = Vec4f(0.4f, 0.4f, 0.4f, 0.0f);
+                vertices.push_back(v0);
+                v0.Position = Vec4f(z * cos(t + tStep), h, z * sin(t + tStep), 1.0f);
+                // v0.Color    = Vec4f(0.0f, 1.0f, 0.0f, 0.0f);
+                vertices.push_back(v0);
+                v0.Position = Vec4f((z - hStep) * cos(t + tStep), h + hStep, (z - hStep) * sin(t + tStep), 1.0f);
+                // v0.Color    = Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
+                vertices.push_back(v0);
+                v0.Position = Vec4f((z - hStep) * cos(t), h + hStep, (z - hStep) * sin(t), 1.0f);
+                // v0.Color    = Vec4f(1.0f, 1.0f, 0.0f, 0.0f);
+                vertices.push_back(v0);
+                indices.insert(indices.end(), {index + 2, index + 1, index, index + 3, index + 2, index});
+                index += 4;
+            }
+            h = h + hStep;
+        }
+        return RenderInfo(std::move(vertices), std::move(indices), RenderDevice::MergeMode::COLOR_MODE, 0);
+    }
+};
+} // namespace Shape
+
 namespace PhysicsSimulation
 {
 // Not much but ...
@@ -14,7 +158,7 @@ struct Sphere
     float t         = 0; // Its the time parameter
     Vec3f center    = {0.0f, 0.0f, 0.0f};
     Vec3f direction = {0.0f, 0.0f, 1.0f}; // Sphere moving direction vector
-
+    float coefficient_of_restitution = 1.0f; 
     Sphere()        = default;
     Sphere(float radius) : radius{radius}
     {
@@ -121,36 +265,74 @@ struct Sphere
         sphere.direction = sphere.direction + tan1 * mag1 * tan_vec;*/
 
         // Baka mitai
-        this->direction  = norm1 * norm_vec * mag1 + tan0 * mag0 * tan_vec;
-        sphere.direction = norm0 * norm_vec * mag0 + tan1 * mag1 * tan_vec;
+        this->direction  = (norm1 * norm_vec * mag1 + tan0 * mag0 * tan_vec) * this->coefficient_of_restitution;
+        sphere.direction = (norm0 * norm_vec * mag0 + tan1 * mag1 * tan_vec) * sphere.coefficient_of_restitution;
 
         // this->direction  = Vec3f::Cross(this->direction, Vec3f(0.0f, 1.0f, 0.0f));
         // sphere.direction = Vec3f::Cross(sphere.direction, Vec3f(0.0f, 1.0f, 0.0f));
         // After detection, do I need to progress 1 frame further or they basically get stuck?
     }
-
 };
+
+struct Plane;
 
 class PhysicsHandler
 {
-    // It simulates the Newtonian physics on its member along with othter collision detection and resolution 
-    // Lets start with sphere bouncing under effect of gravity and the restitution effect 
+    // It simulates the Newtonian physics on its member along with othter collision detection and resolution
+    // Lets start with sphere bouncing under effect of gravity and the restitution effect
 
-    std::vector<Sphere> spheres; 
+  public:
+    std::vector<Sphere>    spheres;
+    std::vector<uint32_t>  renderIndex{};
 
-    PhysicsHandler()
+    constexpr static float gravity                   = 9.8f;
+    constexpr static float coefficient_of_restituion = 1.0f;
+
+    PhysicsHandler()                                 = default;
+
+    PhysicsHandler(RenderList &renderlist)
     {
-        spheres.reserve(2); 
-        Sphere sph; 
-        sph.radius = 0.3f; 
-        sph.center = Vec3f(-3.0f, 0.0f, 0.0f); 
-        sph.direction = Vec3f(0.0f, 50.0f, 0.0f); 
-        spheres.push_back(sph); 
-
-        sph.radius = 0.25f; 
-        sph.center = Vec3f(3.0f, 0.0f, 0.0f); 
-        sph.direction = Vec3f((0.0f, 40.0f, 0.0f));
+        spheres.reserve(2);
+        Sphere sph;
+        sph.radius    = 0.45f;
+        sph.center    = Vec3f(-5.0f, 0.1f, 0.0f);
+        sph.direction = Vec3f(1.0f, 15.0f, 1.0f);
+        sph.coefficient_of_restitution = 0.6f;
         spheres.push_back(sph);
+
+        // capture the index
+        renderlist.AddRenderable(Shape::Sphere::offload(sph.radius, 0.5f, 0.5f,Vec4f(0.0f,0.5f,0.0f,1.0f)));
+        renderIndex.push_back(renderlist.Renderables.size()-1);
+
+        sph.radius    = 0.5f;
+        sph.center    = Vec3f(4.0f, 0.1f, 0.0f);
+        sph.direction = Vec3f(-1.75f, 15.0f, 0.0f);
+        sph.coefficient_of_restitution = 0.75f;
+        spheres.push_back(sph);
+        renderlist.AddRenderable(Shape::Sphere::offload(sph.radius, 0.5f, 0.5f,Vec4f(0.4f,0.0f,0.4f,0.0f)));
+        renderIndex.push_back(renderIndex.back() + 1);
+    }
+
+    void simulate(float dt, Plane &plane, Sphere &, Sphere&); 
+    //{
+    //    for (auto &sph : spheres)
+    //    {
+    //        sph.direction = sph.direction + gravity * dt * Vec3f(0.0f, -1.0f, 0.0f);
+    //        sph.center    = sph.center + dt * sph.direction;
+    //        sph.
+    //    }
+    //    // if each sphere collide with the plane, reverse the velocity direction affected by coefficient of restitution
+    //}
+
+    void render(RenderList &renderlist)
+    {
+        // Add the model transform
+        // Woahh .. I already want ranges::zip()
+        for (size_t i = 0; i < spheres.size(); ++i)
+        {
+            renderlist.Renderables.at(renderIndex.at(i)).model_transform =
+                Mat4f(1.0f).translate(spheres.at(i).center).scale(Vec3f(spheres.at(i).radius));
+        }
     }
 };
 
@@ -219,177 +401,50 @@ struct Plane
         auto del1 = a_vec.x * c_vec.y - a_vec.y * c_vec.x;
         auto del2 = b_vec.x * a_vec.y - a_vec.x * b_vec.y;
 
-        if (del == 0) 
+        if (del == 0)
         {
-            // switch to different linear combination 
+            // switch to different linear combination
             del  = b_vec.y * c_vec.z - c_vec.y * b_vec.z;
             del1 = a_vec.y * c_vec.z - c_vec.y * a_vec.z;
             del2 = b_vec.y * a_vec.z - a_vec.y * b_vec.z;
         }
-        // if its zero again switch to another linear combination 
+        // if its zero again switch to another linear combination
         if (del == 0)
         {
             del  = b_vec.x * c_vec.z - c_vec.x * b_vec.z;
             del1 = a_vec.x * c_vec.z - c_vec.x * a_vec.z;
             del2 = b_vec.x * a_vec.z - a_vec.x * b_vec.z;
         }
-        
-        auto s    = del1 / del;
-        auto t    = del2 / del;
 
-        std::cout << " s and t are : " << s << "   " << t << std::endl; 
-        if ( (s >= 0 and s <=1 ) or (t >=0 and t <=1))
+        auto s = del1 / del;
+        auto t = del2 / del;
+
+        std::cout << " s and t are : " << s << "   " << t << std::endl;
+        if ((s >= 0 and s <= 1) or (t >= 0 and t <= 1))
         {
-            // Yes it intersects, so resolve the collision 
-            // As usual, reverse time 
+            // Yes it intersects, so resolve the collision
+            // As usual, reverse time
             sphere.center = sphere.center - dt * sphere.direction;
-            // reflect along the normal direction of the plane 
-            sphere.direction = sphere.direction.norm() * sphere.direction.reflect(normal).unit();
-            return true; 
+            // reflect along the normal direction of the plane
+            sphere.direction = sphere.direction.norm() * sphere.direction.reflect(normal).unit() * sphere.coefficient_of_restitution;
+            return true;
         }
         return false;
     }
 };
+
+void PhysicsHandler::simulate(float dt, Plane &plane, Sphere& sphA, Sphere&sphB)
+{
+    for (auto &sph : spheres)
+    {
+        sph.direction = sph.direction + gravity * dt * Vec3f(0.0f, -1.0f, 0.0f);
+        sph.center    = sph.center + dt * sph.direction;
+        plane.IntersectAndResolve(sph, dt);
+        // allow collision with outer spheres too 
+        sph.resolve_collision(sphA, dt);
+        sph.resolve_collision(sphB, dt);
+    }
+    // if each sphere collide with the plane, reverse the velocity direction affected by coefficient of restitution
+}
+
 } // namespace PhysicsSimulation
-
-namespace Shape
-{
-
-class Shapes
-{
-};
-class Cylinder
-{
-  public:
-    static RenderInfo offload(float radius, float height)
-    {
-        std::vector<Pipeline3D::VertexAttrib3D> vertices;
-        std::vector<uint32_t>                   indices;
-
-        constexpr float                         pi    = 3.141592f;
-        float                                   hStep = 0.25f;
-        float                                   tStep = 0.25f;
-
-        float                                   h     = 0;
-        float                                   t     = 0;
-        uint32_t                                index = 0;
-
-        while (h < height)
-        {
-            for (t = 0; t < 2 * pi; t += tStep)
-            {
-                Pipeline3D::VertexAttrib3D v0;
-                v0.Position = Vec4f(radius * cos(t), h, radius * sin(t), 1.0f);
-                v0.Color    = Vec4f(0.4f, 0.4f, 0.4f, 0.0f);
-                vertices.push_back(v0);
-                v0.Position = Vec4f(radius * cos(t + tStep), h, radius * sin(t + tStep), 1.0f);
-                // v0.Color    = Vec4f(0.0f, 1.0f, 0.0f, 0.0f);
-                vertices.push_back(v0);
-                v0.Position = Vec4f(radius * cos(t + tStep), h + hStep, radius * sin(t + tStep), 1.0f);
-                // v0.Color    = Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
-                vertices.push_back(v0);
-                v0.Position = Vec4f(radius * cos(t), h + hStep, radius * sin(t), 1.0f);
-                // v0.Color    = Vec4f(1.0f, 1.0f, 0.0f, 0.0f);
-                vertices.push_back(v0);
-                indices.insert(indices.end(), {index + 2, index + 1, index, index + 3, index + 2, index});
-                index += 4;
-            }
-            h = h + hStep;
-        }
-        return RenderInfo(std::move(vertices), std::move(indices), RenderDevice::MergeMode::COLOR_MODE, 0);
-    }
-};
-class Sphere
-{
-  public:
-    static RenderInfo offload(float radius, float phiStep = 0.25f, float theStep = 0.25f)
-    {
-        // oof .. wasted too much time here due to incorrect winding order
-        std::vector<Pipeline3D::VertexAttrib3D> vertices;
-        std::vector<uint32_t>                   indices;
-
-        constexpr float                         pi      = 3.14159265f;
-
-        uint32_t                                index   = 0;
-
-        for (float x = pi / 2; x >= -pi / 2; x -= theStep)
-        {
-            float theta = pi / 2 - x;
-            for (float phi = -pi; phi <= pi; phi += phiStep)
-            {
-                Pipeline3D::VertexAttrib3D v0;
-                v0.Position =
-                    Vec4f(radius * sin(theta) * cos(phi), radius * cos(theta), radius * sin(theta) * sin(phi), 1.0f);
-                v0.Color = Vec4f(0.4f, 0.4f, 0.4f, 0.0f);
-                vertices.push_back(v0);
-                v0.Position = Vec4f(radius * sin(theta - theStep) * cos(phi), radius * cos(theta - theStep),
-                                    radius * sin(theta - theStep) * sin(phi), 1.0f);
-
-                // v0.Color    = Vec4f(0.0f, 1.0f, 0.0f, 0.0f);
-                vertices.push_back(v0);
-                v0.Position = Vec4f(radius * sin(theta - theStep) * cos(phi + phiStep), radius * cos(theta - theStep),
-                                    radius * sin(theta - theStep) * sin(phi + phiStep), 1.0f);
-
-                // v0.Color    = Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
-                vertices.push_back(v0);
-                v0.Position = Vec4f(radius * sin(theta) * cos(phi + phiStep), radius * cos(theta),
-                                    radius * sin(theta) * sin(phi + phiStep), 1.0f);
-
-                // v0.Color    = Vec4f(1.0f, 1.0f, 0.0f, 0.0f);
-                vertices.push_back(v0);
-
-                indices.insert(indices.end(), {index, index + 1, index + 2, index + 2, index + 3, index});
-
-                index += 4;
-            }
-        }
-
-        return RenderInfo(std::move(vertices), std::move(indices), RenderDevice::MergeMode::COLOR_MODE, 0);
-    }
-};
-class Plane
-{
-};
-class Cone
-{
-  public:
-    static RenderInfo offload(float height, float radius)
-    {
-        std::vector<Pipeline3D::VertexAttrib3D> vertices;
-        std::vector<uint32_t>                   indices;
-
-        constexpr float                         pi    = 3.141592f;
-        float                                   hStep = 0.5f;
-        float                                   tStep = 0.5f;
-
-        float                                   h     = 0;
-        float                                   t     = 0;
-        uint32_t                                index = 0;
-
-        while (h < height)
-        {
-            auto z = height - h;
-            for (t = 0; t < 2 * pi; t += tStep)
-            {
-                Pipeline3D::VertexAttrib3D v0;
-                v0.Position = Vec4f(z * cos(t), h, z * sin(t), 1.0f);
-                v0.Color    = Vec4f(0.4f, 0.4f, 0.4f, 0.0f);
-                vertices.push_back(v0);
-                v0.Position = Vec4f(z * cos(t + tStep), h, z * sin(t + tStep), 1.0f);
-                // v0.Color    = Vec4f(0.0f, 1.0f, 0.0f, 0.0f);
-                vertices.push_back(v0);
-                v0.Position = Vec4f((z - hStep) * cos(t + tStep), h + hStep, (z - hStep) * sin(t + tStep), 1.0f);
-                // v0.Color    = Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
-                vertices.push_back(v0);
-                v0.Position = Vec4f((z - hStep) * cos(t), h + hStep, (z - hStep) * sin(t), 1.0f);
-                // v0.Color    = Vec4f(1.0f, 1.0f, 0.0f, 0.0f);
-                vertices.push_back(v0);
-                indices.insert(indices.end(), {index + 2, index + 1, index, index + 3, index + 2, index});
-                index += 4;
-            }
-            h = h + hStep;
-        }
-        return RenderInfo(std::move(vertices), std::move(indices), RenderDevice::MergeMode::COLOR_MODE, 0);
-    }
-};
-} // namespace Shape

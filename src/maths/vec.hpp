@@ -109,11 +109,16 @@ template <cNumeric T, cNumeric U> inline constexpr auto operator*(U scalar, Vec2
 using Vec2f  = Vec2<float32>;
 using Vec2u8 = Vec2<uint8_t>;
 
+template <cNumeric T> 
+struct Vec4;
+
 template <cNumeric T> struct Vec3
 {
 
     T x, y, z;
     Vec3() = default;
+    Vec3(Vec4<T> const &vec);
+
     explicit Vec3(T a) : x{a}, y{a}, z{a}
     {
     }
@@ -289,13 +294,9 @@ template <cNumeric T> std::ostream &operator<<(std::ostream &os, Vec2<T> vec)
 
 template <cNumeric T> struct Vec4
 {
-    union {
-
-        struct
-        {
-            T x, y, z, w; // w is the fourth component
-        };
-        T elem[4];
+    struct
+    {
+        T x, y, z, w; // w is the fourth component
     };
 
     Vec4() = default;
@@ -353,7 +354,19 @@ template <cNumeric T> struct Vec4
     }
     T &operator[](size_t index)
     {
-        return elem[index];
+        switch (index)
+        {
+        case 0:
+            return x;
+        case 1:
+            return y;
+        case 2:
+            return z;
+        case 3:
+            return w;
+        default:
+            assert("!Vec4 out of range");
+        }
     }
     const T &operator[](size_t index) const
     {
@@ -373,6 +386,13 @@ template <cNumeric T> struct Vec4
         }
     }
 };
+
+template <cNumeric T> Vec3<T>::Vec3(Vec4<T> const &vec)
+{
+    this->x = vec.x; 
+    this->y = vec.y; 
+    this->z = vec.z; 
+}
 
 template <cNumeric U, cNumeric T> auto operator*(U scalar, const Vec4<T> &vec) -> Vec4<decltype(scalar * vec.x)>
 {
@@ -436,12 +456,12 @@ struct Vec4ss
         return Vec4ss(_mm_mul_ps(_mm_set_ps1(val), this->vec));
     }
 
-    int compare_f3_greater_eq_than_zero() const 
+    int compare_f3_greater_eq_than_zero() const
     {
         return (_mm_movemask_ps(_mm_cmpge_ps(vec, _mm_setzero_ps())) & 0x0F);
     }
 
-    int compare_f3_lesser_eq_than_zero() const 
+    int compare_f3_lesser_eq_than_zero() const
     {
         return (_mm_movemask_ps(_mm_cmple_ps(vec, _mm_setzero_ps())) & 0x0F);
     }
@@ -451,15 +471,15 @@ struct Vec4ss
         return Vec4ss(_mm_shuffle_ps(vec, vec, _MM_SHUFFLE(2, 1, 3, 0)));
     }
 
-    static int generate_mask(Vec4ss const& a, Vec4ss const& b, Vec4ss const& c)
+    static int generate_mask(Vec4ss const &a, Vec4ss const &b, Vec4ss const &c)
     {
-        auto a_m = a.compare_f3_greater_eq_than_zero(); 
-        auto b_m = b.compare_f3_greater_eq_than_zero(); 
-        auto c_m = c.compare_f3_greater_eq_than_zero(); 
+        auto a_m = a.compare_f3_greater_eq_than_zero();
+        auto b_m = b.compare_f3_greater_eq_than_zero();
+        auto c_m = c.compare_f3_greater_eq_than_zero();
         return a_m & b_m & c_m;
     }
 
-    static int generate_neg_mask(Vec4ss const& a, Vec4ss const& b, Vec4ss const& c)
+    static int generate_nmask(Vec4ss const &a, Vec4ss const &b, Vec4ss const &c)
     {
         auto a_m = a.compare_f3_lesser_eq_than_zero();
         auto b_m = b.compare_f3_lesser_eq_than_zero();
@@ -469,13 +489,12 @@ struct Vec4ss
 };
 } // namespace SIMD
 
-template <cNumeric T> 
-Vec4<T>::Vec4(SIMD::Vec4ss const& vec)
+template <cNumeric T> Vec4<T>::Vec4(SIMD::Vec4ss const &vec)
 {
-    float a[4]; 
+    float a[4];
     _mm_store_ps(a, vec.vec);
-    x = a[3]; 
-    y = a[2]; 
-    z = a[1]; 
+    x = a[3];
+    y = a[2];
+    z = a[1];
     w = a[0];
 }

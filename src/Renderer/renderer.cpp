@@ -198,6 +198,8 @@ void ClearDepthBuffer()
     // who said std:: algorithms are bad :D
     auto size = platform.zBuffer.width * platform.zBuffer.height; 
     std::fill(platform.zBuffer.buffer,platform.zBuffer.buffer + size, 1.0f); 
+    std::fill(platform.shadowMap.buffer, platform.shadowMap.buffer + platform.shadowMap.width * platform.zBuffer.height,
+              1.0f);
     // std::memset(platform.zBuffer.buffer, 0, sizeof(float) * size);
 }
 // SetBackGround 

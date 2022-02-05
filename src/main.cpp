@@ -39,7 +39,7 @@ Alternative::ThreadPool    thread_pool{};
 Parallel::ParallelRenderer parallel_renderer;
 
 // Small physics simulation demo
-PhysicsSimulation::Sphere sphereA, sphereB;
+PhysicsSimulation::Sphere sphereA, sphereB, sphereC;
 PhysicsSimulation::Plane  plane;
 
 Vec3f                     cameraPosition = Vec3f();
@@ -50,9 +50,12 @@ int32_t                   xPos, yPos;
 // TODO : Shadow casting using depth mapping and simple sphere simulations in 3D
 // Now initiating the 3D sphere collisions
 
-static RLights current_light{};
+PhysicsSimulation::PhysicsHandler physics{};
 
-RLights        get_light_source()
+static RLights                    current_light{};
+
+std::vector<Vec3f>                cameraLocus{};
+RLights                           get_light_source()
 {
     return current_light;
 }
@@ -192,28 +195,73 @@ void RendererMainLoop(Platform *platform)
             // x = r * cos(theta); theta is the angle between radial vector and x axis
             // z = r * sin(theta);
             // y = h (taken in steps)
+            auto copyVertices = vertices;
+            auto copyIndices  = indices;
+
+            // From indices 3 to 5 we have
+            for (auto &vertex : copyVertices)
+                vertex.Color = Vec4f(0.0f, 1.0f, 0.0f, 0.0f);
 
             Renderables.AddRenderable(RenderInfo(std::move(Vertices), std::move(Indices),
                                                  RenderDevice::MergeMode::TEXTURE_MODE, fancyTexture));
 
             // Renderables.AddRenderable(Shape::Cylinder::offload(1.0f, 2.0f));
-            Renderables.AddRenderable(Shape::Sphere::offload(1.0f,0.55f,0.55f));
-            Renderables.AddRenderable(Shape::Sphere::offload(1.0f));
+            Renderables.AddRenderable(Shape::Sphere::offload(1.0f, 0.2f, 0.2f, {0.0f,0.5f,0.5f,0.0f}));
+            Renderables.AddRenderable(Shape::Sphere::offload(1.0f, 0.2f, 0.2f, {0.5f,0.0f,0.0f,0.0f}));
+            Renderables.AddRenderable(Shape::Sphere::offload(1.0f, 0.25f, 0.25f, {0.1f, 0.3f, 0.5f,0.0f}));
+
+            auto ve1 = copyVertices;
+            auto i1  = copyIndices;
+
+            for (auto &v : ve1)
+                v.Color = Vec4f(1.0f, 0.0f, 0.0f, 0.0f);
+
+            Renderables.AddRenderable(
+                RenderInfo(std::move(copyVertices), std::move(copyIndices), RenderDevice::MergeMode::COLOR_MODE, 0));
+
+            Renderables.AddRenderable(
+                RenderInfo(std::move(ve1), std::move(i1), RenderDevice::MergeMode::COLOR_MODE, 0));
+
+            physics       = PhysicsSimulation::PhysicsHandler(Renderables);
 
             current_light = RLights{.position  = Vec4f(4.0f, 6.0f, 0.0f, 1.0f),
-                                    .color     = Vec4f(1.0f, 215.0f / 255.0f, 0x00, 0x00),
+                                    .color     = Vec4f(0.75f, 103.0f/255.0f,0.1f, 0x00),
                                     .intensity = 1.0f};
+
+            
+            cameraLocus.push_back(Vec3f(-15.0f,8.0f,10.0f));
+            cameraLocus.push_back(Vec3f(10.0f,4.0f,10.0f));
+            cameraLocus.push_back(Vec3f(10.0f,4.0f,-10.0f));
+            cameraLocus.push_back(Vec3f(-10.0f,2.0f,-10.0f));
+            // cameraLocus.push_back(Vec3f(1.0f, 10.0f, 1.0f));
+
+            std::cout << "Bezier blending : " << BezierBlender.BezierBlending(cameraLocus, 0.0f);
+            std::cout << "Bezier blending : " << BezierBlender.BezierBlending(cameraLocus, 1.0f);
         }
         bckg.CreateBackgroundTexture("../img103.png");
         bckg.SampleForCurrentFrameBuffer(platform, false);
+        /*  cameraPosition    = Vec3f(0.0f, 8.0f, 6.0f);
+          sphereA.radius    = 0.5f;
+          sphereA.center    = Vec3f(0.0f, 8.0f, -10.0f);
+          sphereA.direction = Vec3f(0.0f, -3.5f, 5.0f);
+
+          sphereB.radius    = 0.5f;
+          sphereB.center    = Vec3f(0.0f, 2.0f, 5.0f);
+          sphereB.direction = Vec3f(0.0f, 0.0f, -1.0f);*/
         cameraPosition    = Vec3f(0.0f, 8.0f, 6.0f);
         sphereA.radius    = 0.5f;
-        sphereA.center    = Vec3f(0.0f, 8.0f, -10.0f);
-        sphereA.direction = Vec3f(0.0f, -3.5f, 5.0f);
+        sphereA.center    = Vec3f(0.0f, 40.0f, -50.0f);
+        sphereA.direction = Vec3f(-0.8f, -7.1f, 9.0f);
 
         sphereB.radius    = 0.5f;
-        sphereB.center    = Vec3f(0.0f, 2.0f, 5.0f);
-        sphereB.direction = Vec3f(0.0f, 0.0f, -1.0f);
+        sphereB.center    = Vec3f(0.0f, 3.0f, 25.0f);
+        sphereB.direction = Vec3f(0.0f, 0.0f, -4.80f);
+
+        sphereC.radius    = 0.5f;
+        sphereC.center    = Vec3f(50.0f, 20.0f, -100.0f);
+        sphereC.direction = Vec3f(-10.0f, -3.5f, 20.0f);
+
+        return; 
     }
     else if (platform->bSizeChanged)
     {
@@ -229,23 +277,59 @@ void RendererMainLoop(Platform *platform)
     // current_light.position.z -= 0.001f;
     // current_light.position.y += 0.001f;
 
+    platform->deltaTime /= 1;
+    if (time > 4.9f and time <= 5.5f)
+    {
+        platform->deltaTime /= 10;
+    }
     time += platform->deltaTime;
-    platform->deltaTime /= 2.0f;
-    // RenderBackground(bckg);
-    FastClearColor(0x10, 0x10, 0x10, 0x00);
+    static auto t       = 0.0f; 
+    static bool reverse = false;
+    t                   += platform->deltaTime/ 10.0f;
+    if (time > 8.0f)
+    {
+        t               -= 2*platform->deltaTime / 10.0f;
+        static auto rem = time; 
+        if (!reverse)
+        {
+            reverse           = true;
+            sphereA.direction = sphereA.direction * -1.0f;
+            sphereB.direction = sphereB.direction * -1.0f;
+            sphereC.direction = sphereC.direction * -1.0f;
+
+            for (auto & sph : physics.spheres)
+            {
+                sph.direction = sph.direction * -1.0f; 
+                sph.coefficient_of_restitution = 1 / sph.coefficient_of_restitution;
+            }
+        }
+
+    }
+    // Slows time during collision phase 
+    RenderBackground(bckg);
+    // FastClearColor(0x10, 0x10, 0x10, 0x00);
     using namespace Pipeline3D;
     Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f, 20.0f);
     /*auto transform = OrthoProjection(-5.0f, 5.0f, -5.0f, 5.0f, -5.0f, 10.0f);
      */
     sphereA.resolve_collision(sphereB, platform->deltaTime);
-    plane.IntersectAndResolve(sphereA,platform->deltaTime);
+    sphereA.resolve_collision(sphereC, platform->deltaTime);
+    sphereB.resolve_collision(sphereC, platform->deltaTime);
+    
+    plane.IntersectAndResolve(sphereA, platform->deltaTime);
+    plane.IntersectAndResolve(sphereB, platform->deltaTime);
+    plane.IntersectAndResolve(sphereC, platform->deltaTime);
+
     ClearDepthBuffer();
     auto model = Mat4f(1.0f);
     // .rotateY(time); //.rotateX(time / 2.0f);
     // Math is magic
-    auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + getFrontVector(platform), Vec3f(0.0f, 1.0f, 0.0f));
-    // auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + Vec3f(0.0f, 0.0f, -1.0f), Vec3f(0.0f, 1.0f,
-    // 0.0f));
+    cameraPosition  = BezierBlender.BezierBlending(cameraLocus, t);
+
+    auto lookMatrix = lookAtMatrix(cameraPosition,
+                                   Vec3f(0.0f, 4.5f, 0.0f) + t * Vec3f(0.0f,-3.5f,0.0f), Vec3f(0.0f, 1.0f, 0.0f));
+   /* auto lookMatrix = lookAtMatrix(cameraPosition, cameraPosition + getFrontVector(platform), Vec3f(0.0f, 1.0f,
+     0.0f));*/
 
     // seperate the model matrix from here to other space, since we also ned to interpolate the vertex position like
     // other things in the screen space to calculate other effects so basically yes, its all to calculate fragpos Lets
@@ -255,13 +339,21 @@ void RendererMainLoop(Platform *platform)
         renderable.scene_transform = transform * lookMatrix;
         // renderable.model_transform = model;
     }
-    Renderables.Renderables.at(0).model_transform = Mat4f(1.0f);
-   Renderables.Renderables.at(1).model_transform =
+    Renderables.Renderables.at(0).model_transform = Mat4f(1.0f).scale({1.5f, 1.5f, 1.0f});
+    Renderables.Renderables.at(1).model_transform =
         model.translate(sphereA.simulate(platform->deltaTime)).rotateY(time / 5.0f).scale(Vec3f(sphereA.radius));
     Renderables.Renderables.at(2).model_transform =
         model.translate(sphereB.simulate(platform->deltaTime)).rotateY(time / 5.0f).scale(Vec3f(sphereB.radius));
+    Renderables.Renderables.at(3).model_transform =
+        model.translate(sphereC.simulate(platform->deltaTime)).rotateY(time / 5.0f).scale(Vec3f(sphereC.radius));
+
+    Renderables.Renderables.at(4).model_transform = Mat4f(1.0f).translate({4.0f, 1.0f, -4.0f});
+    Renderables.Renderables.at(5).model_transform = Mat4f(1.0f).translate({-4.0f, 1.0f, 4.0f});
     // Renderables.Renderables.at(2).model_transform = Mat4f(1.0f).translate({1.0f, 1.0f, -0.5f});
 
+    physics.simulate(platform->deltaTime, plane, sphereA, sphereB);
+
+    physics.render(Renderables);
     parallel_renderer.AlternativeParallelRenderablePipeline(thread_pool, Renderables, MemAllocator);
     // Visualize the shadow depth buffer
     // This good ... now render form light's perspective

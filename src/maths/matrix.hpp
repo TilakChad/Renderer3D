@@ -135,7 +135,7 @@ inline Mat4<float> OrthoProjection(float left, float right, float bottom, float 
     Mat4<float> matrix(1.0f);
     matrix[0][0] = 2.0f / (right - left);
     matrix[1][1] = 2.0f / (top - bottom);
-    matrix[2][2] = -2.0f / (zFar - zNear);
+    matrix[2][2] = -1.0f / (zFar - zNear);
 
     matrix[0][3] = (right + left) / (left - right);
     matrix[1][3] = (top + bottom) / (bottom - top);
