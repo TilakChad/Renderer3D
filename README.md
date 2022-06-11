@@ -1,2 +1,2 @@
 # Renderer
-Renderer -> Rasteriser + RayTracer
+3D Renderer -> Rasteriser (RayTracer implemented minimally)
