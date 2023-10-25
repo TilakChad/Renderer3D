@@ -114,14 +114,14 @@ void RendererMainLoop(Platform *platform)
             Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_MODE);
             // Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_BLENDING_MODE);
             // Device->Context.SetMergeMode(RenderDevice::MergeMode::NOTHING);
-            Object3D model("../Blender/macube.obj");
-            Object3D model2("../Blender/unwrappedorder.obj");
+            // Object3D model("../Blender/macube.obj");
+            // Object3D model2("../Blender/unwrappedorder.obj");
             // Object3D model("../Blender/bagpack/backpack.obj");
 
             std::vector<Pipeline3D::VertexAttrib3D> vertices{};
             std::vector<uint32_t>                   indices{};
 
-            model.LoadGeometry(vertices, indices);
+            // model.LoadGeometry(vertices, indices);
             // Renderables.AddRenderable(RenderInfo(std::move(vertices), std::move(indices),
             //                                      RenderDevice::MergeMode::COLOR_MODE,
             //                                      model.Materials.at(0).texture_id));
@@ -238,7 +238,8 @@ void RendererMainLoop(Platform *platform)
             std::cout << "Bezier blending : " << BezierBlender.BezierBlending(cameraLocus, 0.0f);
             std::cout << "Bezier blending : " << BezierBlender.BezierBlending(cameraLocus, 1.0f);
         }
-        bckg.CreateBackgroundTexture("../img103.png");
+	
+        bckg.CreateBackgroundTexture("./img103.png");
         bckg.SampleForCurrentFrameBuffer(platform, false);
         /*  cameraPosition    = Vec3f(0.0f, 8.0f, 6.0f);
           sphereA.radius    = 0.5f;

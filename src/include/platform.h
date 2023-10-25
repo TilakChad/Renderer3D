@@ -58,6 +58,7 @@ enum class Keys
 typedef void (*SwapBufferFn)(void);
 typedef void (*OpacityFn)(float);
 typedef bool (*KeyPressedFn)(Keys key);
+
 struct Platform
 {
     // What should a platform have?

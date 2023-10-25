@@ -136,6 +136,12 @@ template <typename T> class MemAlloc
     }
 };
 
+template<class T, class U>
+bool operator==(const MemAlloc<T>&, const MemAlloc<U>&) { return true; }
+ 
+template<class T, class U>
+bool operator!=(const MemAlloc<T>&, const MemAlloc<U>&) { return false; }
+
 // Definition of mutex obj
 // template <typename T>
 // std::mutex MemAlloc<T>::mut = {};

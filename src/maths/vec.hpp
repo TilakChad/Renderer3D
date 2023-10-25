@@ -7,8 +7,17 @@
 #include <type_traits>
 
 // TODO :: Add feature test macros here
+#ifdef _MSC_VER
 #include <intrin.h>
+#else
+#include <smmintrin.h>
+#endif
+
 #include <xmmintrin.h>
+
+#ifndef _MSC_VER
+#define __debugbreak() __asm__ volatile("int $3")
+#endif 
 
 #include <iostream>
 
@@ -127,7 +136,7 @@ template <cNumeric T> struct Vec3
     {
     }
 
-    Vec3(T x, T y, T z) : x{x}, y{y}, z{z}
+    constexpr Vec3(T x, T y, T z) : x{x}, y{y}, z{z}
     {
     }
 

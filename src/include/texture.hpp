@@ -27,16 +27,16 @@ struct Texture
 
     struct Convolution
     {
-        static inline struct
+        static inline struct GaussianBlur
         {
             constexpr static float32 kernel[] = {1.0f / 16, 2.0f / 16, 1.0f / 16, 2.0f / 16, 4.0f / 16,
                                                  2.0f / 16, 1.0f / 16, 2.0f / 16, 1.0f / 16}; // --> Gaussian Blur
         } GaussianBlur;
-        static inline struct
+        static inline struct Sharpen
         {
             constexpr static float32 kernel[] = {0, -1, 0, -1, 5, -1, 0, -1, 0}; // --> Sharpen
         } Sharpen;
-        static inline struct
+        static inline struct EdgeDetection
         {
             constexpr static float32 kernel[] = {-1, -1, -1, -1, 8, -1, -1, -1, -1};
         } EdgeDetection;
