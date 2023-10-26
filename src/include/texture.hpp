@@ -152,10 +152,15 @@ struct BackgroundTexture
                 mem[0]   = raw[2];
                 mem[1]   = raw[1];
                 mem[2]   = raw[0];
-                mem[3]   = raw[3];
+		if (texture.channels == 3)
+			mem[3] = 0xFF;
+		else 
+			mem[3] = raw[3];
+
                 mem += cbuffer_channels;
             }
         }
+	printf("Number of channels; %d\n", texture.channels);
 
         if (applyGaussianBlur)
         {

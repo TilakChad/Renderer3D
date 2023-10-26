@@ -1,4 +1,5 @@
 #include "../include/platform.h"
+#include <atomic>
 
 struct wl_display;
 struct wl_buffer;
@@ -27,21 +28,37 @@ struct MemBuf {
 struct MemoryPool {
 	struct wl_shm      *shm; 
 	struct wl_shm_pool *shm_pool;
-	struct MemBuf      alloc_range;
+	struct MemBuf       mapped_range;
 }; 
 
-struct WaylandPlatform {
-	struct wl_registry *registry; 
-	struct wl_display  *display;
-	struct wl_buffer   *buffer;
-	struct wl_seat     *seat; 
+struct xdg {
+	struct xdg_wm_base  *wm_base;
+	struct xdg_toplevel *toplevel;
+	struct xdg_surface  *surface;
+};
 
-	// XDG Extensions
-	struct xdg_wm_base *wm_base;
-	struct wl_surface  *surface;
-	struct wl_callback *callback;
+struct WaylandPlatform {
+	struct wl_registry   *registry; 
+	struct wl_display    *display;
+	struct wl_compositor *compositor; 
+	struct wl_buffer     *buffer;
+	struct wl_seat       *seat; 
+	struct wl_callback  *callback;
+
+	struct wl_surface    *surface;
+	struct MemBuf        surface_buf; 
+
+	struct xdg          xdg;
 
 	struct SharedMemory shared_memory_info;
-	struct MemBuf       mapped_range;
+	struct MemoryPool   pool;
+
+	std::atomic<bool>    frame_lock = false; 
+};
+
+
+struct PlatformData {
+	Platform        data;
+	WaylandPlatform wl;
 };
 

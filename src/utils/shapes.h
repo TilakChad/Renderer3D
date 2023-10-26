@@ -419,7 +419,6 @@ struct Plane
         auto s = del1 / del;
         auto t = del2 / del;
 
-        std::cout << " s and t are : " << s << "   " << t << std::endl;
         if ((s >= 0 and s <= 1) or (t >= 0 and t <= 1))
         {
             // Yes it intersects, so resolve the collision

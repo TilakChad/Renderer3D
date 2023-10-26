@@ -102,7 +102,8 @@ void RendererMainLoop(Platform *platform)
 
     if (platform->bFirst)
     {
-        ClearColor(0x87, 0xCE, 0xEB);
+	    //  ClearColor(0x87, 0xCE, 0xEB);
+	    ClearColor(0xFF, 0x00, 0xFF); 
         // Initialize the rendering device
         platform->bFirst = false;
 
@@ -114,14 +115,15 @@ void RendererMainLoop(Platform *platform)
             Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_MODE);
             // Device->Context.SetMergeMode(RenderDevice::MergeMode::TEXTURE_BLENDING_MODE);
             // Device->Context.SetMergeMode(RenderDevice::MergeMode::NOTHING);
-            // Object3D model("../Blender/macube.obj");
-            // Object3D model2("../Blender/unwrappedorder.obj");
+	    
+            Object3D model("./macube.obj");
+            Object3D model2("./unwrappedorder.obj");
             // Object3D model("../Blender/bagpack/backpack.obj");
 
             std::vector<Pipeline3D::VertexAttrib3D> vertices{};
             std::vector<uint32_t>                   indices{};
 
-            // model.LoadGeometry(vertices, indices);
+            model.LoadGeometry(vertices, indices);
             // Renderables.AddRenderable(RenderInfo(std::move(vertices), std::move(indices),
             //                                      RenderDevice::MergeMode::COLOR_MODE,
             //                                      model.Materials.at(0).texture_id));
@@ -306,8 +308,11 @@ void RendererMainLoop(Platform *platform)
         }
 
     }
+
     // Slows time during collision phase 
     RenderBackground(bckg);
+    // ClearColor(0xFF,0xFF, 0x00);
+    
     // FastClearColor(0x10, 0x10, 0x10, 0x00);
     using namespace Pipeline3D;
     Mat4f transform = Perspective(platform->width * 1.0f / platform->height, 0.4f / 3 * 3.141592f, 0.3f, 20.0f);
